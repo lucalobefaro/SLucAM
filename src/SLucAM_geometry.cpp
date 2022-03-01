@@ -149,7 +149,7 @@ namespace SLucAM {
             //  d2 = inv_R_inv_K*p2 
             cv::Mat D = cv::Mat::eye(3,2,CV_32F);
             D.at<float>(0,0) = -(inv_K11*p1_x + inv_K12*p1_y + inv_K13);
-            D.at<float>(1,0) = -(inv_K21*p1_x + inv_K22*p1_y + inv_K23);;
+            D.at<float>(1,0) = -(inv_K21*p1_x + inv_K22*p1_y + inv_K23);
             D.at<float>(2,0) = -(inv_K31*p1_x + inv_K32*p1_y + inv_K33);
             D.at<float>(0,1) = (inv_R_inv_K11*p2_x + inv_R_inv_K12*p2_y + inv_R_inv_K13);
             D.at<float>(1,1) = (inv_R_inv_K21*p2_x + inv_R_inv_K22*p2_y + inv_R_inv_K23);;

@@ -77,7 +77,7 @@ int main() {
     SLucAM::normalize_points(p_img2, p_img2_normalized, T2);
 
     auto start = high_resolution_clock::now();
-    SLucAM::initialize(state, p_img1, p_img2, p_img1_normalized, p_img2_normalized, T1, T2, matches);
+    SLucAM::initialize(state, p_img1, p_img2, p_img1_normalized, p_img2_normalized, T1, T2, matches, 0, 1);
     auto stop = high_resolution_clock::now();
     auto duration = duration_cast<milliseconds>(stop - start);
     cout << "duration: " << duration.count() << " milliseconds" << endl;
@@ -119,7 +119,7 @@ int main() {
     auto duration2 = duration_cast<microseconds>(stop - start);
     cout << "duration E&J: " << duration2.count() << " microseconds" << endl;
     
-    cout << state.getPoses()[0] << endl;
+    cout << state.getPoses()[1] << endl;
     cout << state.getLandmarks()[0] << endl;
     cout << state.getLandmarks()[1] << endl;
 

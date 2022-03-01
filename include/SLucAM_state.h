@@ -31,10 +31,20 @@ namespace SLucAM {
     *               measurement
     */
     struct Association {
-        unsigned int pose_idx;
-        unsigned int landmark_idx;
-        unsigned int measurement_idx;
-        unsigned int point_idx;
+        const unsigned int pose_idx;
+        const unsigned int landmark_idx;
+        const unsigned int measurement_idx;
+        const unsigned int point_idx;
+
+        Association(const unsigned int p_idx, \
+                    const unsigned int l_idx, \
+                    const unsigned int m_idx, \
+                    const unsigned int pnt_idx)
+            : pose_idx(p_idx)
+            , landmark_idx(l_idx)
+            , measurement_idx(m_idx)
+            , point_idx(pnt_idx)
+        {}
     };
 
 } // namespace SLucAM
@@ -60,8 +70,8 @@ namespace SLucAM {
 
         void initializeObservations(cv::Mat& new_pose, \
                                     std::vector<cv::Point3f>& new_landmarks, \
-                                    std::vector<cv::KeyPoint>& points1, \
-                                    std::vector<cv::KeyPoint>& points2, \
+                                    const std::vector<cv::KeyPoint>& points1, \
+                                    const std::vector<cv::KeyPoint>& points2, \
                                     const std::vector<cv::DMatch>& matches, \
                                     const std::vector<unsigned int>& idxs, \
                                     const unsigned int& measure1_idx, \
@@ -85,8 +95,7 @@ namespace SLucAM {
                         const std::vector<cv::Mat>& poses, \
                         const std::vector<cv::Point3f>& landmarks, \
                         const std::vector<Measurement>& measurements, \
-                        const std::vector<std::tuple<unsigned int, \
-                            unsigned int, unsigned int>>& associations, \
+                        const std::vector<Association>& associations, \
                         const cv::Mat& K, \
                         cv::Mat& H, cv::Mat& b, \
                         float& chi_tot, \

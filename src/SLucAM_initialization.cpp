@@ -42,6 +42,8 @@ namespace SLucAM {
                     const std::vector<cv::KeyPoint>& p_img2_normalized, \
                     cv::Mat& T1, cv::Mat& T2, \
                     const vector<cv::DMatch>& matches, \
+                    const unsigned int measure1_idx, \
+                    const unsigned int measure2_idx, \
                     const unsigned int& ransac_iter) {
         
         // Initialization
@@ -134,9 +136,8 @@ namespace SLucAM {
                             F, K, X, triangulate_points);
 
         // Update state
-        // TODO: update associations
-        state.addPose(X);
-        state.addLandmarks(triangulate_points);
+        state.initializeObservations(X, triangulate_points, p_img1, p_img2, \
+                            matches, matches_filter, measure1_idx, measure2_idx);
 
         return true;
     }

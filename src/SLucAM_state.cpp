@@ -57,8 +57,8 @@ namespace SLucAM {
     */
     void State::initializeObservations(cv::Mat& new_pose, \
                                     std::vector<cv::Point3f>& new_landmarks, \
-                                    std::vector<cv::KeyPoint>& points1, \
-                                    std::vector<cv::KeyPoint>& points2, \
+                                    const std::vector<cv::KeyPoint>& points1, \
+                                    const std::vector<cv::KeyPoint>& points2, \
                                     const std::vector<cv::DMatch>& matches, \
                                     const std::vector<unsigned int>& idxs, \
                                     const unsigned int& measure1_idx, \
@@ -67,13 +67,24 @@ namespace SLucAM {
         // Initialization
         const unsigned int n_observations = idxs.size();
 
+        // Add the first two poses
+        this->_poses.emplace_back(cv::Mat::eye(4,4,CV_32F));
+        this->_poses.emplace_back(new_pose);
+
         // Add all the landmarks in the landmarks vector
-        
+        this->_landmarks.insert(this->_landmarks.end(), \
+                    new_landmarks.begin(), new_landmarks.end());
 
         // For each observation
         for(unsigned int i=0; i<n_observations; ++i) {
 
-            // 
+            // Add the observation made from pose 1
+            this->_associations.emplace_back(0, i, \
+                        measure1_idx, matches[idxs[i]].queryIdx);
+
+            // Add the same observation made from pose 2
+            this->_associations.emplace_back(1, i, \
+                        measure2_idx, matches[idxs[i]].trainIdx);
         } 
     }
 
@@ -136,8 +147,7 @@ namespace SLucAM {
                         const std::vector<cv::Mat>& poses, \
                         const std::vector<cv::Point3f>& landmarks, \
                         const std::vector<Measurement>& measurements, \
-                        const std::vector<std::tuple<unsigned int, \
-                            unsigned int, unsigned int>>& associations, \
+                        const std::vector<Association>& associations, \
                         const cv::Mat& K, \
                         cv::Mat& H, cv::Mat& b, \
                         float& chi_tot, \
@@ -156,15 +166,17 @@ namespace SLucAM {
         // For each measurement
         for(unsigned int i=0; i<n_measurements; ++i) {
 
-            // Get the index of the observer pose
-            const unsigned int& pose_idx = std::get<0>(associations[i]);
+            // Get the index of the observer pose aand the index of 
+            // the landmark observed
+            const unsigned int& pose_idx = associations[i].pose_idx;
+            const unsigned int& landmark_idx = associations[i].landmark_idx;
             
             // Get the elements of the measurement
             const cv::Mat& current_pose = poses[pose_idx];
+            const cv::Point3f& current_landmark = landmarks[landmark_idx];
             const cv::KeyPoint& current_measure = \
-                        measurements[std::get<1>(associations[i])]\
-                        .getPoints()[std::get<2>(associations[i])];
-            const cv::Point3f& current_landmark = landmarks[i];
+                        measurements[associations[i].measurement_idx]\
+                        .getPoints()[associations[i].point_idx];
 
             // Compute error and Jacobian
             if(!computeProjectionErrorAndJacobian(current_pose, current_landmark, \
@@ -212,7 +224,7 @@ namespace SLucAM {
 
             // Retrieve the indices in the matrix H and vector b
             unsigned int pose_matrix_idx = poseMatrixIdx(pose_idx);
-            unsigned int landmark_matrix_idx = landmarkMatrixIdx(i, n_poses);
+            unsigned int landmark_matrix_idx = landmarkMatrixIdx(landmark_idx, n_poses);
 
             // Update the H matrix
             // J_pose.t()*J_pose
