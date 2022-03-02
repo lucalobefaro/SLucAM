@@ -64,30 +64,34 @@ namespace SLucAM {
     
     public:
 
-        State(cv::Mat& K, \
+        State(cv::Mat& K, std::vector<Measurement>& measurements, \
             const unsigned int expected_poses, \
             const unsigned int expected_landmarks);
 
-        void initializeObservations(cv::Mat& new_pose, \
-                                    std::vector<cv::Point3f>& new_landmarks, \
-                                    const std::vector<cv::KeyPoint>& points1, \
-                                    const std::vector<cv::KeyPoint>& points2, \
-                                    const std::vector<cv::DMatch>& matches, \
-                                    const std::vector<unsigned int>& idxs, \
-                                    const unsigned int& measure1_idx, \
-                                    const unsigned int& measure2_idx);
+        void initializeState(cv::Mat& new_pose, \
+                            std::vector<cv::Point3f>& new_landmarks, \
+                            const std::vector<cv::KeyPoint>& points1, \
+                            const std::vector<cv::KeyPoint>& points2, \
+                            const std::vector<cv::DMatch>& matches, \
+                            const std::vector<unsigned int>& idxs, \
+                            const unsigned int& measure1_idx, \
+                            const unsigned int& measure2_idx);
 
         const std::vector<cv::Mat>& getPoses() const {return this->_poses;};
+
+        const std::vector<Measurement>& getMeasurements() const {return this->_measurements;};
 
         const std::vector<cv::Point3f>& getLandmarks() const {return this->_landmarks;};
 
         const cv::Mat& getCameraMatrix() const {return this->_K;};
 
+        const std::vector<Association>& getAssociations() const {return this->_associations;};
+
         float performBundleAdjustment(const float& n_iterations, \
                                         const float& damping_factor, \
                                         const float& kernel_threshold);
-
-    private: 
+    // TODO: reset this
+    //private: 
 
         void boxPlus(cv::Mat& dx);
     
@@ -99,9 +103,9 @@ namespace SLucAM {
                         const cv::Mat& K, \
                         cv::Mat& H, cv::Mat& b, \
                         float& chi_tot, \
-                        const float& kernel_threshold, \
-                        const float& threshold_to_ignore);
-
+                        const float& kernel_threshold=10, \
+                        const float& threshold_to_ignore=2000);
+    private:
         static bool computeProjectionErrorAndJacobian(const cv::Mat& pose, \
                         const cv::Point3f& landmark_pose, \
                         const cv::KeyPoint& img_point, const cv::Mat& K, \

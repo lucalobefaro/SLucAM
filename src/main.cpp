@@ -25,7 +25,7 @@ int main() {
     
     // -----------------------------------------------------------------------------
     // Feature extraction
-    /* -----------------------------------------------------------------------------
+    // -----------------------------------------------------------------------------
     string filename_img1 = "../data/images/image1.jpg";
     string filename_img2 = "../data/images/image2.jpg";
     cv::Ptr<cv::Feature2D> orb_detector = cv::ORB::create();
@@ -33,11 +33,13 @@ int main() {
 
     SLucAM::Measurement meas1(filename_img1, orb_detector);
     SLucAM::Measurement meas2(filename_img2, orb_detector);
-    */
 
+    std::vector<SLucAM::Measurement> measurements = {meas1, meas2};
+
+    
     // -----------------------------------------------------------------------------
-    // INITIALIZATION TEST
-    // -----------------------------------------------------------------------------    
+    // Load camera infos
+    // -----------------------------------------------------------------------------
     cv::Mat K = cv::Mat::eye(3,3,CV_32F);
     K.at<float>(0,0) = 852.6132831012704;
     K.at<float>(0,1) = 0;
@@ -48,9 +50,74 @@ int main() {
     K.at<float>(2,0) = 0;
     K.at<float>(2,1) = 0;
     K.at<float>(2,2) = 1;
-    SLucAM::State state(K,2,221);
 
-    // Load synthetic data
+
+    // -----------------------------------------------------------------------------
+    // Create state
+    // -----------------------------------------------------------------------------
+    SLucAM::State state(K,measurements,2,221);
+
+
+    // -----------------------------------------------------------------------------
+    // INITIALIZATION TEST
+    // -----------------------------------------------------------------------------    
+    auto start = high_resolution_clock::now();
+    SLucAM::initialize(state, matcher, 0, 1);
+    auto stop = high_resolution_clock::now();
+    auto duration = duration_cast<milliseconds>(stop - start);
+    cout << "duration: " << duration.count() << " milliseconds" << endl << endl;
+    
+    cout << "First pose: " << endl << state.getPoses()[0] << endl << endl;
+    cout << "Second pose (predicted): " << endl << state.getPoses()[1] << endl << endl;
+    cout << "First point triangulated: " << endl << state.getLandmarks()[0] << endl << endl;
+    cout << "Second point triangulated: " << endl << state.getLandmarks()[1] << endl << endl;
+    cout << "----------- INITIALIZATION DONE ------------" << endl << endl << endl;
+
+
+    // -----------------------------------------------------------------------------
+    // BUNDLE ADJUSTMENT TEST
+    // ----------------------------------------------------------------------------- 
+    cv::Mat H = cv::Mat::zeros(12 + 6, 12 + 6, CV_32F); 
+    cv::Mat b = cv::Mat::zeros(12 + 6, 1, CV_32F);
+    float chi_tot;
+
+    std::vector<cv::Point3f> sub_landmarks = std::vector<cv::Point3f>(\
+                                                &state.getLandmarks()[0], \
+                                                &state.getLandmarks()[2]);
+
+    start = high_resolution_clock::now();
+    //SLucAM::State::buildLinearSystemProjections(state.getPoses(), \
+                                            sub_landmarks, \
+                                            state.getMeasurements(), \
+                                            state.getAssociations(), \
+                                            state.getCameraMatrix(), \
+                                            H, b, chi_tot);
+    stop = high_resolution_clock::now();
+    auto duration2 = duration_cast<microseconds>(stop - start);
+    cout << "duration: " << duration2.count() << " microseconds" << endl;
+
+    cout << endl << H << endl << endl;
+    cout << endl << b << endl << endl;
+
+    /*cout << endl << endl << "ASSOCIATIONS:" << endl;
+    for(auto& a : state.getAssociations()) {
+        if(a.landmark_idx > 1) break;
+        cout << "Pose: " << a.pose_idx << endl;
+        cout << "Landmark: " << a.landmark_idx << endl;
+        cout << "Measurement: " << a.measurement_idx << endl;
+        cout << "Point: " << a.point_idx << endl;
+        cout << "Efective point: [" << \
+            state.getMeasurements()[a.measurement_idx].getPoints()[a.point_idx].pt.x \
+            << ", " << state.getMeasurements()[a.measurement_idx].getPoints()[a.point_idx].pt.y \
+            << "]" << endl << endl;
+    }*/
+
+    return 0;
+}
+
+
+
+/* Load synthetic data
     std::vector<cv::KeyPoint> p_img1(274);
     std::vector<cv::KeyPoint> p_img2(305);
     std::ifstream f;
@@ -75,53 +142,4 @@ int main() {
     cv::Mat T1, T2;
     SLucAM::normalize_points(p_img1, p_img1_normalized, T1);
     SLucAM::normalize_points(p_img2, p_img2_normalized, T2);
-
-    auto start = high_resolution_clock::now();
-    SLucAM::initialize(state, p_img1, p_img2, p_img1_normalized, p_img2_normalized, T1, T2, matches, 0, 1);
-    auto stop = high_resolution_clock::now();
-    auto duration = duration_cast<milliseconds>(stop - start);
-    cout << "duration: " << duration.count() << " milliseconds" << endl;
-    
-    cout << "X predicted: " << endl << state.getPoses()[0] << endl << endl;
-    cout << "First point triangulated: " << endl << state.getLandmarks()[0] << endl;
-    cout << "----------- INITIALIZATION DONE ------------" << endl << endl << endl;
-
-
-    // TEST BUNDLE ADJUSTMENT
-    cv::Mat J_1;
-    cv::Mat J_2;
-    cv::Mat error;
-    cv::Mat pose_1 = cv::Mat::eye(4,4,CV_32F);
-    pose_1.at<float>(0,0) = 0.9848;
-    pose_1.at<float>(0,1) = -0.1736;
-    pose_1.at<float>(0,3) = 0.0100;
-    pose_1.at<float>(1,0) = 0.1736;
-    pose_1.at<float>(1,1) = 0.9848;
-    pose_1.at<float>(1,3) = 0.03;
-    pose_1.at<float>(2,2) = 1;
-    pose_1.at<float>(3,3) = 1;
-    cv::Mat pose2_wrt_pose1 =  state.getPoses()[0];
-
-    cv::Mat pose_2 = (cv::Mat_<float>(4,4) << 1.0460,  -0.3200,   0.1800,   0.7857,\
-   0.6800   ,1.0460  , 0.1800 ,  1.0132,\
-   0.1800   ,0.1800  , 1.1800,   0.1800,\
-   0.1800  , 0.1800  , 0.1800 ,  1.1800);
-
-    cout << state.getPoses()[0] << endl;
-    cout << state.getLandmarks()[0] << endl;
-    cout << state.getLandmarks()[1] << endl;
-
-    cv::Mat dx = (cv::Mat_<float>(12,1) << 3, 4, 5, 0.13, 0.45, 0.9, 8,56,89,13,12,14, 1, 2, 3, 10, 11, 12);
-
-    start = high_resolution_clock::now();
-    //state.boxPlus(dx);
-    stop = high_resolution_clock::now();
-    auto duration2 = duration_cast<microseconds>(stop - start);
-    cout << "duration E&J: " << duration2.count() << " microseconds" << endl;
-    
-    cout << state.getPoses()[1] << endl;
-    cout << state.getLandmarks()[0] << endl;
-    cout << state.getLandmarks()[1] << endl;
-
-    return 0;
-}
+    */

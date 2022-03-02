@@ -22,10 +22,8 @@
 // -----------------------------------------------------------------------------
 namespace SLucAM {
 
-   bool initialize(State& state, const std::vector<cv::KeyPoint>& p_img1, const std::vector<cv::KeyPoint>& p_img2, \
-                    const std::vector<cv::KeyPoint>& p_img1_normalized, const std::vector<cv::KeyPoint>& p_img2_normalized, \
-                    cv::Mat& T1, cv::Mat& T2, \
-                    const std::vector<cv::DMatch>& matches, \
+   bool initialize(State& state,
+                    const cv::BFMatcher& matcher, \
                     const unsigned int measure1_idx, \
                     const unsigned int measure2_idx, \
                     const unsigned int& ransac_iter=200);

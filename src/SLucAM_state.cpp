@@ -26,11 +26,12 @@ namespace SLucAM {
     * the camera matrix K.
     * TODO: do shrink to fit somewhere. 
     */
-    State::State(cv::Mat& K, \
+    State::State(cv::Mat& K, std::vector<Measurement>& measurements, \
                 const unsigned int expected_poses, \
                 const unsigned int expected_landmarks) {
         
         this->_K = K;
+        this->_measurements = measurements;
         this->_poses.reserve(expected_poses);
         this->_landmarks.reserve(expected_landmarks);
 
@@ -55,14 +56,14 @@ namespace SLucAM {
     *   measure1_idx/measure2_idx: index in the measures vector where to find 
     *       the points observed in points1/points2
     */
-    void State::initializeObservations(cv::Mat& new_pose, \
-                                    std::vector<cv::Point3f>& new_landmarks, \
-                                    const std::vector<cv::KeyPoint>& points1, \
-                                    const std::vector<cv::KeyPoint>& points2, \
-                                    const std::vector<cv::DMatch>& matches, \
-                                    const std::vector<unsigned int>& idxs, \
-                                    const unsigned int& measure1_idx, \
-                                    const unsigned int& measure2_idx) {
+    void State::initializeState(cv::Mat& new_pose, \
+                                std::vector<cv::Point3f>& new_landmarks, \
+                                const std::vector<cv::KeyPoint>& points1, \
+                                const std::vector<cv::KeyPoint>& points2, \
+                                const std::vector<cv::DMatch>& matches, \
+                                const std::vector<unsigned int>& idxs, \
+                                const unsigned int& measure1_idx, \
+                                const unsigned int& measure2_idx) {
         
         // Initialization
         const unsigned int n_observations = idxs.size();
@@ -71,19 +72,24 @@ namespace SLucAM {
         this->_poses.emplace_back(cv::Mat::eye(4,4,CV_32F));
         this->_poses.emplace_back(new_pose);
 
-        // Add all the landmarks in the landmarks vector
-        this->_landmarks.insert(this->_landmarks.end(), \
-                    new_landmarks.begin(), new_landmarks.end());
-
         // For each observation
         for(unsigned int i=0; i<n_observations; ++i) {
 
+            // If the landmark is not triangulated in a good way
+            if(new_landmarks[i].x == 0 && \
+                new_landmarks[i].y == 0 && \
+                new_landmarks[i].z == 0) {
+                continue;                   // Ignore this association
+            }
+
+            this->_landmarks.emplace_back(new_landmarks[i]);
+
             // Add the observation made from pose 1
-            this->_associations.emplace_back(0, i, \
+            this->_associations.emplace_back(0, this->_landmarks.size()-1, \
                         measure1_idx, matches[idxs[i]].queryIdx);
 
             // Add the same observation made from pose 2
-            this->_associations.emplace_back(1, i, \
+            this->_associations.emplace_back(1, this->_landmarks.size()-1, \
                         measure2_idx, matches[idxs[i]].trainIdx);
         } 
     }
@@ -131,10 +137,10 @@ namespace SLucAM {
     *       attribute of State class for details)
     *   K: the camera matrix
     *   H: (output) the resulting H matrix for Least-Square
-    *       (we assume it is already initialized with dimension NxN
+    *       (we assume it is already initialized with zeros and dimension NxN
     *       where n= (6*#poses) + (3*#landmarks))
     *   b: (output) the resulting b vector for Least-Square
-    *       (we assume it is already initialized with dimension Nx1
+    *       (we assume it is already initialized with zeros and dimension Nx1
     *       where n= (6*#poses) + (3*#landmarks))
     *   chi_tot: (output) chi error of the current iteration of Least-Square
     *   kernel_threshold: robust kernel threshold
@@ -399,25 +405,25 @@ namespace SLucAM {
 
             // Update the b vector
             // J_pose.t()*error
-            b.at<float>(pose_matrix_idx, pose_matrix_idx) += \
+            b.at<float>(pose_matrix_idx, 0) += \
                 J_pose_11*error_1 + J_pose_21*error_2; 
-            b.at<float>(pose_matrix_idx, pose_matrix_idx+1) += \
+            b.at<float>(pose_matrix_idx+1, 0) += \
                 J_pose_12*error_1 + J_pose_22*error_2;
-            b.at<float>(pose_matrix_idx, pose_matrix_idx+2) += \
+            b.at<float>(pose_matrix_idx+2, 0) += \
                 J_pose_13*error_1 + J_pose_23*error_2;
-            b.at<float>(pose_matrix_idx, pose_matrix_idx+3) += \
+            b.at<float>(pose_matrix_idx+3, 0) += \
                 J_pose_14*error_1 + J_pose_24*error_2;
-            b.at<float>(pose_matrix_idx, pose_matrix_idx+4) += \
+            b.at<float>(pose_matrix_idx+4, 0) += \
                 J_pose_15*error_1 + J_pose_25*error_2;
-            b.at<float>(pose_matrix_idx, pose_matrix_idx+5) += \
+            b.at<float>(pose_matrix_idx+5, 0) += \
                 J_pose_16*error_1 + J_pose_26*error_2;
 
             // J_landmark.t()*error
-            b.at<float>(landmark_matrix_idx, landmark_matrix_idx) += \
+            b.at<float>(landmark_matrix_idx, 0) += \
                 J_landmark_11*error_1 + J_landmark_21*error_2;
-            b.at<float>(landmark_matrix_idx, landmark_matrix_idx+1) += \
+            b.at<float>(landmark_matrix_idx+1, 0) += \
                 J_landmark_12*error_1 + J_landmark_22*error_2;
-            b.at<float>(landmark_matrix_idx, landmark_matrix_idx+2) += \
+            b.at<float>(landmark_matrix_idx+2, 0) += \
                 J_landmark_13*error_1 + J_landmark_23*error_2;
 
         }

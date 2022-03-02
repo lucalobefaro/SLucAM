@@ -30,28 +30,20 @@ namespace SLucAM {
     *   true if the initialization is correctly performed, false otherwise (e.g.
     *   in case of a rotation only transform between meas1 and meas2)
     */
-   /* TODO: reset this version, the current is just for test
-    bool initialize(State& state, const Measurement& meas1, \
-                    const Measurement& meas2, \
+    bool initialize(State& state, \
                     const cv::BFMatcher& matcher, \
-                    const unsigned int& ransac_iter) {
-    */
-   bool initialize(State& state, const std::vector<cv::KeyPoint>& p_img1, \
-                    const std::vector<cv::KeyPoint>& p_img2, \
-                    const std::vector<cv::KeyPoint>& p_img1_normalized, \
-                    const std::vector<cv::KeyPoint>& p_img2_normalized, \
-                    cv::Mat& T1, cv::Mat& T2, \
-                    const vector<cv::DMatch>& matches, \
                     const unsigned int measure1_idx, \
                     const unsigned int measure2_idx, \
                     const unsigned int& ransac_iter) {
         
         // Initialization
         const cv::Mat& K = state.getCameraMatrix();
+        const Measurement& meas1 = state.getMeasurements()[measure1_idx];
+        const Measurement& meas2 = state.getMeasurements()[measure2_idx];
 
         // Match the two measurements
-        //vector<cv::DMatch> matches;
-        //SLucAM::match_measurements(meas1, meas2, matches, matcher);
+        vector<cv::DMatch> matches;
+        SLucAM::match_measurements(meas1, meas2, matches, matcher);
 
         // Generate random sets of matches indices, one for iteration
         // TODO: optimize this
@@ -71,14 +63,12 @@ namespace SLucAM {
 
         // Perform RANSAC
         // TODO: multi-thread here?
-        /*
         const std::vector<cv::KeyPoint>& p_img1 = meas1.getPoints();
         const std::vector<cv::KeyPoint>& p_img1_normalized = meas1.getNormalizedPoints();
         const std::vector<cv::KeyPoint>& p_img2 = meas2.getPoints();
         const std::vector<cv::KeyPoint>& p_img2_normalized = meas2.getNormalizedPoints();
         const cv::Mat& T1 = meas1.getTNorm();
         const cv::Mat& T2 = meas2.getTNorm();
-        */
 
         std::vector<bool> inliers_mask_F(n_matches);
         std::vector<bool> inliers_mask_H(n_matches);
@@ -136,7 +126,7 @@ namespace SLucAM {
                             F, K, X, triangulate_points);
 
         // Update state
-        state.initializeObservations(X, triangulate_points, p_img1, p_img2, \
+        state.initializeState(X, triangulate_points, p_img1, p_img2, \
                             matches, matches_filter, measure1_idx, measure2_idx);
 
         return true;
