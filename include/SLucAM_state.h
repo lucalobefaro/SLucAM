@@ -18,25 +18,26 @@
 
 
 // -----------------------------------------------------------------------------
-// Association struct
+// Observations structs
 // -----------------------------------------------------------------------------
 namespace SLucAM {
     
     /*
-    * This struct is useful to keep note of each observation, by memorizing:
+    * This struct is useful to keep note of each observation pose->landmark, 
+    * by memorizing:
     *   pose_idx: the observer pose
     *   landmark_idx: the believed position of the landmark observed
     *   measurement_idx: the measure where we take this observation
     *   point_idx: the point which this observation refers to, in the given
     *               measurement
     */
-    struct Association {
+    struct LandmarkObservation {
         const unsigned int pose_idx;
         const unsigned int landmark_idx;
         const unsigned int measurement_idx;
         const unsigned int point_idx;
 
-        Association(const unsigned int p_idx, \
+        LandmarkObservation(const unsigned int p_idx, \
                     const unsigned int l_idx, \
                     const unsigned int m_idx, \
                     const unsigned int pnt_idx)
@@ -44,6 +45,24 @@ namespace SLucAM {
             , landmark_idx(l_idx)
             , measurement_idx(m_idx)
             , point_idx(pnt_idx)
+        {}
+    };
+
+
+    /*
+    * This struct is useful to keep note of each observation pose->pose, 
+    * by memorizing:
+    *   observer_pose_idx: the observer pose
+    *   measured_pose_idx: the observed pose
+    */
+    struct PoseObservation {
+        const unsigned int observer_pose_idx;
+        const unsigned int measured_pose_idx;
+
+        PoseObservation(const unsigned int observer_pose_idx, \
+                        const unsigned int measured_pose_idx)
+            : observer_pose_idx(observer_pose_idx)
+            , measured_pose_idx(measured_pose_idx)
         {}
     };
 
@@ -85,13 +104,15 @@ namespace SLucAM {
 
         const cv::Mat& getCameraMatrix() const {return this->_K;};
 
-        const std::vector<Association>& getAssociations() const {return this->_associations;};
+        const std::vector<LandmarkObservation>& getLandmarkObservations() const {return this->_landmark_observations;};
+
+        const std::vector<PoseObservation>& getPoseObservations() const {return this->_pose_observations;};
 
         float performBundleAdjustment(const float& n_iterations, \
                                         const float& damping_factor, \
                                         const float& kernel_threshold);
     // TODO: reset this
-    //private: 
+    //private:
 
         void boxPlus(cv::Mat& dx);
     
@@ -99,12 +120,19 @@ namespace SLucAM {
                         const std::vector<cv::Mat>& poses, \
                         const std::vector<cv::Point3f>& landmarks, \
                         const std::vector<Measurement>& measurements, \
-                        const std::vector<Association>& associations, \
+                        const std::vector<LandmarkObservation>& associations, \
                         const cv::Mat& K, \
                         cv::Mat& H, cv::Mat& b, \
                         float& chi_tot, \
-                        const float& kernel_threshold=10, \
-                        const float& threshold_to_ignore=2000);
+                        const float& kernel_threshold, \
+                        const float& threshold_to_ignore);
+        
+        static unsigned int buildLinearSystemPoses(\
+                        const std::vector<cv::Mat>& poses, \
+                        const std::vector<PoseObservation>& associations, \
+                        cv::Mat& H, cv::Mat& b, \
+                        float& chi_tot, \
+                        const float& kernel_threshold);
     private:
         static bool computeProjectionErrorAndJacobian(const cv::Mat& pose, \
                         const cv::Point3f& landmark_pose, \
@@ -114,7 +142,7 @@ namespace SLucAM {
         static void computePoseErrorAndJacobian(const cv::Mat& pose_1, \
                         const cv::Mat& pose_2, \
                         const cv::Mat& pose2_wrt_pose1, \
-                        cv::Mat& J_1, cv::Mat& J_2, cv::Mat& error);
+                        cv::Mat& J_2, cv::Mat& error);
             
         static inline unsigned int poseMatrixIdx(const unsigned int&  idx) {
             return idx*6;
@@ -132,7 +160,12 @@ namespace SLucAM {
         std::vector<Measurement> _measurements;
 
         // In this vector we have the informations of each observation
-        std::vector<Association> _associations;
+        // pose->landmark
+        std::vector<LandmarkObservation> _landmark_observations;
+
+        // In this vector we have the informations of each observation
+        // pose->pose
+        std::vector<PoseObservation> _pose_observations;
 
         // The vector containing all the triangulated points, ordered
         // by insertion

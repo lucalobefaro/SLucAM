@@ -92,6 +92,12 @@ int main() {
                                             state.getAssociations(), \
                                             state.getCameraMatrix(), \
                                             H, b, chi_tot);
+    SLucAM::State::buildLinearSystemPoses(\
+                        state.getPoses(), \
+                        state.getPoseObservations(), \
+                        H, b, \
+                        chi_tot, \
+                        2000000000);
     stop = high_resolution_clock::now();
     auto duration2 = duration_cast<microseconds>(stop - start);
     cout << "duration: " << duration2.count() << " microseconds" << endl;
