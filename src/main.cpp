@@ -77,46 +77,17 @@ int main() {
     // -----------------------------------------------------------------------------
     // BUNDLE ADJUSTMENT TEST
     // ----------------------------------------------------------------------------- 
-    cv::Mat H = cv::Mat::zeros(12 + 6, 12 + 6, CV_32F); 
-    cv::Mat b = cv::Mat::zeros(12 + 6, 1, CV_32F);
-    float chi_tot;
-
-    std::vector<cv::Point3f> sub_landmarks = std::vector<cv::Point3f>(\
-                                                &state.getLandmarks()[0], \
-                                                &state.getLandmarks()[2]);
-
     start = high_resolution_clock::now();
-    //SLucAM::State::buildLinearSystemProjections(state.getPoses(), \
-                                            sub_landmarks, \
-                                            state.getMeasurements(), \
-                                            state.getAssociations(), \
-                                            state.getCameraMatrix(), \
-                                            H, b, chi_tot);
-    SLucAM::State::buildLinearSystemPoses(\
-                        state.getPoses(), \
-                        state.getPoseObservations(), \
-                        H, b, \
-                        chi_tot, \
-                        2000000000);
+    state.performBundleAdjustment(50, 1, 20000000000, 20000000000);
     stop = high_resolution_clock::now();
-    auto duration2 = duration_cast<microseconds>(stop - start);
-    cout << "duration: " << duration2.count() << " microseconds" << endl;
+    auto duration2 = duration_cast<milliseconds>(stop - start);
+    cout << "duration: " << duration2.count() << " milliseconds" << endl;
 
-    cout << endl << H << endl << endl;
-    cout << endl << b << endl << endl;
-
-    /*cout << endl << endl << "ASSOCIATIONS:" << endl;
-    for(auto& a : state.getAssociations()) {
-        if(a.landmark_idx > 1) break;
-        cout << "Pose: " << a.pose_idx << endl;
-        cout << "Landmark: " << a.landmark_idx << endl;
-        cout << "Measurement: " << a.measurement_idx << endl;
-        cout << "Point: " << a.point_idx << endl;
-        cout << "Efective point: [" << \
-            state.getMeasurements()[a.measurement_idx].getPoints()[a.point_idx].pt.x \
-            << ", " << state.getMeasurements()[a.measurement_idx].getPoints()[a.point_idx].pt.y \
-            << "]" << endl << endl;
-    }*/
+    cout << endl << "First pose:" << endl << state.getPoses()[0] << endl;
+    cout << endl << "Second pose:" << endl << state.getPoses()[1] << endl;
+    cout << endl << "First landmark:" << endl << state.getLandmarks()[0] << endl;
+    cout << endl << "Second landmark:" << endl << state.getLandmarks()[1] << endl;
+    cout << "----------- BUNDLE ADJUSTMENT DONE ------------" << endl << endl << endl;
 
     return 0;
 }

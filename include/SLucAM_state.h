@@ -108,11 +108,12 @@ namespace SLucAM {
 
         const std::vector<PoseObservation>& getPoseObservations() const {return this->_pose_observations;};
 
-        float performBundleAdjustment(const float& n_iterations, \
+        void performBundleAdjustment(const float& n_iterations, \
                                         const float& damping_factor, \
-                                        const float& kernel_threshold);
-    // TODO: reset this
-    //private:
+                                        const float& kernel_threshold, \
+                                        const float& threshold_to_ignore);
+    
+    private:
 
         void boxPlus(cv::Mat& dx);
     
@@ -125,19 +126,23 @@ namespace SLucAM {
                         cv::Mat& H, cv::Mat& b, \
                         float& chi_tot, \
                         const float& kernel_threshold, \
-                        const float& threshold_to_ignore);
+                        const float& threshold_to_ignore, \
+                        const unsigned int& img_rows, \
+                        const unsigned int& img_cols);
         
         static unsigned int buildLinearSystemPoses(\
                         const std::vector<cv::Mat>& poses, \
                         const std::vector<PoseObservation>& associations, \
+                        const std::vector<cv::Mat>& poses_measurements, \
                         cv::Mat& H, cv::Mat& b, \
                         float& chi_tot, \
                         const float& kernel_threshold);
-    private:
+
         static bool computeProjectionErrorAndJacobian(const cv::Mat& pose, \
                         const cv::Point3f& landmark_pose, \
                         const cv::KeyPoint& img_point, const cv::Mat& K, \
-                        cv::Mat& J_pose, cv::Mat& J_landmark, cv::Mat& error);
+                        cv::Mat& J_pose, cv::Mat& J_landmark, cv::Mat& error, \
+                        const unsigned int& img_rows, const unsigned int& img_cols);
       
         static void computePoseErrorAndJacobian(const cv::Mat& pose_1, \
                         const cv::Mat& pose_2, \
@@ -166,6 +171,10 @@ namespace SLucAM {
         // In this vector we have the informations of each observation
         // pose->pose
         std::vector<PoseObservation> _pose_observations;
+
+        // In thi vector, in position i we have how the observed pose i is 
+        // "seen" by the pose i-1
+        std::vector<cv::Mat> _poses_measurements; 
 
         // The vector containing all the triangulated points, ordered
         // by insertion
