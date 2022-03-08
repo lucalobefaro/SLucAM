@@ -76,7 +76,7 @@ int main() {
 
     // -----------------------------------------------------------------------------
     // BUNDLE ADJUSTMENT TEST
-    // ----------------------------------------------------------------------------- 
+    /* ----------------------------------------------------------------------------- 
     start = high_resolution_clock::now();
     state.performBundleAdjustment(50, 1, 20000000000, 20000000000);
     stop = high_resolution_clock::now();
@@ -88,6 +88,30 @@ int main() {
     cout << endl << "First landmark:" << endl << state.getLandmarks()[0] << endl;
     cout << endl << "Second landmark:" << endl << state.getLandmarks()[1] << endl;
     cout << "----------- BUNDLE ADJUSTMENT DONE ------------" << endl << endl << endl;
+    */
+
+    // -----------------------------------------------------------------------------
+    // PROJECTIVE ICP TEST
+    // -----------------------------------------------------------------------------
+    
+    cv::Mat Xr = (cv::Mat_<float>(4,4) << \
+    0.93969262, -0.34202009, 1.0313163e-06, 0.72615826, \
+    0.34201992, 0.93969268, 9.6002213e-07, 0.68752754, \
+    -1.2869932e-06, -6.0532057e-07, 1, -7.8231224e-06, \
+    0, 0, 0, 1);
+
+    cv::Point3f Xl = cv::Point3f(10.0757,-6.46847,31.9809);
+
+    cv::KeyPoint z = cv::KeyPoint(cv::Point2f(46.06, 13.875), 1);
+
+    cv::Mat error = cv::Mat::zeros(2,1, CV_32F);
+    cv::Mat J = cv::Mat::zeros(2,6, CV_32F);
+    bool res = SLucAM::error_and_jacobian_Posit(Xr, Xl, z, K, 2*K.at<float>(1,2), 2*K.at<float>(0,2),\
+                                    error, J);
+
+    cout << res << endl;
+    cout << error << endl;
+    cout << J << endl;
 
     return 0;
 }

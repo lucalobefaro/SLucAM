@@ -61,4 +61,25 @@ namespace SLucAM {
 
 
 
+// -----------------------------------------------------------------------------
+// Projective ICP functions
+// -----------------------------------------------------------------------------
+namespace SLucAM {
+    void perform_Posit(const Measurement& meas, \
+                        const std::vector<cv::Point3f>& landmarks, \
+                        cv::Mat& K, \
+                        const unsigned int& n_iterations, \
+                        const float& kernel_threshold, \
+                        const float& threshold_to_ignore);
+    bool error_and_jacobian_Posit(const cv::Mat& guessed_pose, \
+                                const cv::Point3f& guessed_landmark, \
+                                const cv::KeyPoint& measured_point, \
+                                const cv::Mat& K, \
+                                const float& img_rows, \
+                                const float& img_cols, \
+                                cv::Mat& error, cv::Mat J);
+} // namespace SLucAM
+
+
+
 #endif // SLUCAM_GEOMETRY_H

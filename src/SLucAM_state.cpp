@@ -119,8 +119,8 @@ namespace SLucAM {
                                         const float& threshold_to_ignore){
         
         // Initialization
-        const unsigned int img_rows = 2*this->_K.at<float>(1, 2);
-        const unsigned int img_cols = 2*this->_K.at<float>(0, 2);
+        const float img_rows = 2*this->_K.at<float>(1, 2);
+        const float img_cols = 2*this->_K.at<float>(0, 2);
         std::vector<unsigned int> n_inliers_projection(n_iterations, 0);
         std::vector<unsigned int> n_inliers_pose(n_iterations, 0);
         std::vector<float> chi_stats_projection(n_iterations, 0.0);
@@ -252,8 +252,8 @@ namespace SLucAM {
                         float& chi_tot, \
                         const float& kernel_threshold, \
                         const float& threshold_to_ignore, \
-                        const unsigned int& img_rows, \
-                        const unsigned int& img_cols) {
+                        const float& img_rows, \
+                        const float& img_cols) {
         
         // Initialization
         unsigned int n_inliers = 0;
@@ -1187,13 +1187,13 @@ namespace SLucAM {
     *   img_rows: #rows in the image plane pixels matrix
     *   img_cols: #cols in the image plane pixels matrix
     *  Outputs:
-    *   true if the projection is valide, false otherwise
+    *   true if the projection is valid, false otherwise
     */
     bool State::computeProjectionErrorAndJacobian(const cv::Mat& pose, \
                         const cv::Point3f& landmark_pose, \
                         const cv::KeyPoint& img_point, const cv::Mat& K,   
                         cv::Mat& J_pose, cv::Mat& J_landmark, cv::Mat& error, \
-                        const unsigned int& img_rows, const unsigned int& img_cols) {
+                        const float& img_rows, const float& img_cols) {
 
         // Some reference to save time
         const float& landmark_pose_x = landmark_pose.x;

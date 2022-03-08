@@ -127,8 +127,8 @@ namespace SLucAM {
                         float& chi_tot, \
                         const float& kernel_threshold, \
                         const float& threshold_to_ignore, \
-                        const unsigned int& img_rows, \
-                        const unsigned int& img_cols);
+                        const float& img_rows, \
+                        const float& img_cols);
         
         static unsigned int buildLinearSystemPoses(\
                         const std::vector<cv::Mat>& poses, \
@@ -142,7 +142,7 @@ namespace SLucAM {
                         const cv::Point3f& landmark_pose, \
                         const cv::KeyPoint& img_point, const cv::Mat& K, \
                         cv::Mat& J_pose, cv::Mat& J_landmark, cv::Mat& error, \
-                        const unsigned int& img_rows, const unsigned int& img_cols);
+                        const float& img_rows, const float& img_cols);
       
         static void computePoseErrorAndJacobian(const cv::Mat& pose_1, \
                         const cv::Mat& pose_2, \

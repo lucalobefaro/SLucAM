@@ -485,3 +485,152 @@ namespace SLucAM {
     }
     
 } // namespace SLucAM
+
+
+
+// -----------------------------------------------------------------------------
+// Projective ICP functions implementation
+// -----------------------------------------------------------------------------
+namespace SLucAM {
+
+    /*
+    * Function that computes the error and jacobian for Projective ICP
+    * Inputs:
+    *   guessed_pose: guessed pose of the world w.r.t. camera
+    *   guessed_landmark: point in the space where we think is located the 
+    *           measured landmark
+    *   measured_point: measured point on the projective plane
+    *   K: camera matrix
+    *   img_rows: #rows in the image plane pixels matrix
+    *   img_cols: #cols in the image plane pixels matrix
+    *   error: (output) we assume it is already initialized as a 2x1 
+    *       matrix
+    *   J: jacobian matrix of the error w.r.t. guessed_pose (output), 
+    *       we assume it is already initialized as a 2x6 matrix
+    * Outputs:
+    *   true if the projection is valid, false otherwise
+    */
+    bool error_and_jacobian_Posit(const cv::Mat& guessed_pose, \
+                                const cv::Point3f& guessed_landmark, \
+                                const cv::KeyPoint& measured_point, \
+                                const cv::Mat& K, \
+                                const float& img_rows, \
+                                const float& img_cols, \
+                                cv::Mat& error, cv::Mat J) {
+        
+        // Some reference to save time+
+        const float& K_11 = K.at<float>(0,0);
+        const float& K_12 = K.at<float>(0,1);
+        const float& K_13 = K.at<float>(0,2);
+        const float& K_21 = K.at<float>(1,0);
+        const float& K_22 = K.at<float>(1,1);
+        const float& K_23 = K.at<float>(1,2);
+        const float& K_31 = K.at<float>(2,0);
+        const float& K_32 = K.at<float>(2,1);
+        const float& K_33 = K.at<float>(2,2);
+        const float& X_11 = guessed_pose.at<float>(0,0);
+        const float& X_12 = guessed_pose.at<float>(0,1);
+        const float& X_13 = guessed_pose.at<float>(0,2);
+        const float& X_14 = guessed_pose.at<float>(0,3);
+        const float& X_21 = guessed_pose.at<float>(1,0);
+        const float& X_22 = guessed_pose.at<float>(1,1);
+        const float& X_23 = guessed_pose.at<float>(1,2);
+        const float& X_24 = guessed_pose.at<float>(1,3);
+        const float& X_31 = guessed_pose.at<float>(2,0);
+        const float& X_32 = guessed_pose.at<float>(2,1);
+        const float& X_33 = guessed_pose.at<float>(2,2);
+        const float& X_34 = guessed_pose.at<float>(2,3);
+        const float& X_41 = guessed_pose.at<float>(3,0);
+        const float& X_42 = guessed_pose.at<float>(3,1);
+        const float& X_43 = guessed_pose.at<float>(3,2);
+        const float& X_44 = guessed_pose.at<float>(3,3);
+        const float& P_x = guessed_landmark.x;
+        const float& P_y = guessed_landmark.y;
+        const float& P_z = guessed_landmark.z;
+
+        // Compute the position of the point w.r.t. camera frame
+        const float p_cam_x = (X_11*P_x + X_12*P_y + X_13*P_z) + X_14;
+        const float p_cam_y = (X_21*P_x + X_22*P_y + X_23*P_z) + X_24;
+        const float p_cam_z = (X_31*P_x + X_32*P_y + X_33*P_z) + X_34; 
+
+        // Check if the prediction is in front of the camera
+        if(p_cam_z < 0) return false;
+
+        // Compute the prediction (projection)
+        const float p_camK_x = K_11*p_cam_x + K_12*p_cam_y + K_13*p_cam_z;
+        const float p_camK_y = K_21*p_cam_x + K_22*p_cam_y + K_23*p_cam_z;
+        const float p_camK_z = K_31*p_cam_x + K_32*p_cam_y + K_33*p_cam_z;
+        const float iz = 1/(p_camK_z);
+        const float z_hat_x = p_camK_x*iz;
+        const float z_hat_y = p_camK_y*iz;
+
+        // Check if the point prediction on projection plane is inside 
+        // the camera frustum
+        // TODO: assicurati che img_cols e img_rows siano corretti
+        if (z_hat_x < 0 || 
+            z_hat_x > img_cols ||
+            z_hat_y < 0 || 
+            z_hat_y > img_rows)
+            return false;
+                
+        // Compute the error
+        error.at<float>(0,0) = z_hat_x - measured_point.pt.x;
+        error.at<float>(1,0) = z_hat_y - measured_point.pt.y;
+
+        // Compute the Jacobian
+        const float iz2 = iz*iz;
+        const float p_cam_iz2_x = -p_camK_x*iz2;
+        const float p_cam_iz2_y = -p_camK_y*iz2;
+
+        J.at<float>(0,0) = K_11*iz + K_31*p_cam_iz2_x;
+        J.at<float>(0,1) = K_12*iz + K_32*p_cam_iz2_x;
+        J.at<float>(0,2) = K_13*iz + K_33*p_cam_iz2_x;
+        J.at<float>(0,3) = p_cam_y*(K_13*iz + K_33*p_cam_iz2_x) - \
+                            p_cam_z*(K_12*iz + K_32*p_cam_iz2_x);
+        J.at<float>(0,4) = p_cam_z*(K_11*iz + K_31*p_cam_iz2_x) - \
+                            p_cam_x*(K_13*iz + K_33*p_cam_iz2_x);
+        J.at<float>(0,5) = p_cam_x*(K_12*iz + K_32*p_cam_iz2_x) - \
+                            p_cam_y*(K_11*iz + K_31*p_cam_iz2_x);
+        J.at<float>(1,0) = K_21*iz + K_31*p_cam_iz2_y;
+        J.at<float>(1,1) = K_22*iz + K_32*p_cam_iz2_y;
+        J.at<float>(1,2) = K_23*iz + K_33*p_cam_iz2_y;
+        J.at<float>(1,3) = p_cam_y*(K_23*iz + K_33*p_cam_iz2_y) - \
+                            p_cam_z*(K_22*iz + K_32*p_cam_iz2_y);
+        J.at<float>(1,4) = p_cam_z*(K_21*iz + K_31*p_cam_iz2_y) - \
+                            p_cam_x*(K_23*iz + K_33*p_cam_iz2_y);
+        J.at<float>(1,5) = p_cam_x*(K_22*iz + K_32*p_cam_iz2_y) - \
+                            p_cam_y*(K_21*iz + K_31*p_cam_iz2_y);
+
+        return true;
+
+    }
+
+
+    /*
+    * Function that perform, given a measurement taken from a camera,
+    * the projective ICP to get the pose of the camera w.r.t. the world
+    * from which such measurement are taken. There will be taken in consideration
+    * only such measurements for which the pose of the landmark is already
+    * triangulated (so guessed)
+    * Inputs:
+    *   meas: measurement
+    *   landmarks: set of triangulated landmarks
+    *   K: camera matrix
+    *   n_iterations: #iterations to perform for Posit
+    *   kernel_threshold: threshold for the outliers
+    *   threshold_to_ignore: error threshold that determine if an outlier 
+    *           is too outlier to be considered
+    */
+    void perform_Posit(const Measurement& meas, \
+                        const std::vector<cv::Point3f>& landmarks, \
+                        cv::Mat& K, \
+                        const unsigned int& n_iterations, \
+                        const float& kernel_threshold, \
+                        const float& threshold_to_ignore) {
+        
+        // Initialization
+        const float img_rows = 2*K.at<float>(1, 2);
+        const float img_cols = 2*K.at<float>(0, 2);
+    }
+
+} // namespace SLucAM
