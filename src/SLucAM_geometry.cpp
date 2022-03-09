@@ -7,6 +7,8 @@
 // INCLUDES
 // -----------------------------------------------------------------------------
 #include <SLucAM_geometry.h>
+#include <Eigen/Core>
+#include <Eigen/Cholesky>
 
 // TODO delete this
 #include <iostream>
@@ -241,6 +243,42 @@ namespace SLucAM {
         T_matrix.at<float>(2,3) = T44*tz + T14*(sx*sz - cx*cz*sy) + \
                                     T24*(cz*sx + cx*sy*sz) + T34*cx*cy;
 
+    }
+
+
+    // Invert a transformation matrix in a fast way by transposing the
+    // rotational part and computin the translational part as
+    // -R't
+    void invert_transformation_matrix(cv::Mat& T_matrix) {
+
+        // Transpose all matrix
+        T_matrix = T_matrix.t();
+
+        // Reference to rotational part
+        const float& R_11 = T_matrix.at<float>(0,0);
+        const float& R_12 = T_matrix.at<float>(0,1);
+        const float& R_13 = T_matrix.at<float>(0,2);
+        const float& R_21 = T_matrix.at<float>(1,0);
+        const float& R_22 = T_matrix.at<float>(1,1);
+        const float& R_23 = T_matrix.at<float>(1,2);
+        const float& R_31 = T_matrix.at<float>(2,0);
+        const float& R_32 = T_matrix.at<float>(2,1);
+        const float& R_33 = T_matrix.at<float>(2,2);
+
+        // Reference to the translational part
+        float& t_x = T_matrix.at<float>(3,0);
+        float& t_y = T_matrix.at<float>(3,1);
+        float& t_z = T_matrix.at<float>(3,2);
+
+        // Compute the translational part
+        T_matrix.at<float>(0,3) = -(R_11*t_x + R_12*t_y + R_13*t_z);
+        T_matrix.at<float>(1,3) = -(R_21*t_x + R_22*t_y + R_23*t_z);
+        T_matrix.at<float>(2,3) = -(R_31*t_x + R_32*t_y + R_33*t_z);
+
+        // Put to zeros the bottom part (to reset transpose)
+        t_x = 0;
+        t_y = 0;
+        t_z = 0;
     }
     
 } // namespace SLucAM
@@ -516,7 +554,7 @@ namespace SLucAM {
                                 const cv::Mat& K, \
                                 const float& img_rows, \
                                 const float& img_cols, \
-                                cv::Mat& error, cv::Mat J) {
+                                cv::Mat& error, cv::Mat& J) {
         
         // Some reference to save time+
         const float& K_11 = K.at<float>(0,0);
@@ -613,7 +651,12 @@ namespace SLucAM {
     * only such measurements for which the pose of the landmark is already
     * triangulated (so guessed)
     * Inputs:
-    *   meas: measurement
+    *   guessed_pose: initial guess
+    *   measurements: all the measurements
+    *   meas_idx: idx of the considered measurement
+    *   landmark_observations: in this vector we have the informations of 
+    *           each observation pose->landmark (we will consider only that 
+    *           observations in this vector with measure idx == meas_idx)
     *   landmarks: set of triangulated landmarks
     *   K: camera matrix
     *   n_iterations: #iterations to perform for Posit
@@ -621,16 +664,107 @@ namespace SLucAM {
     *   threshold_to_ignore: error threshold that determine if an outlier 
     *           is too outlier to be considered
     */
-    void perform_Posit(const Measurement& meas, \
+    void perform_Posit(cv::Mat& guessed_pose, \
+                        const std::vector<Measurement>& measurements, \
+                        const unsigned int& meas_idx, \
+                        const std::vector<LandmarkObservation>& landmark_observations, \
                         const std::vector<cv::Point3f>& landmarks, \
-                        cv::Mat& K, \
+                        const cv::Mat& K, \
                         const unsigned int& n_iterations, \
                         const float& kernel_threshold, \
-                        const float& threshold_to_ignore) {
+                        const float& threshold_to_ignore, \
+                        const float& damping_factor) {
         
         // Initialization
+        const Measurement& meas = measurements[meas_idx];
+        const unsigned int n_observations = landmark_observations.size();
         const float img_rows = 2*K.at<float>(1, 2);
         const float img_cols = 2*K.at<float>(0, 2);
+        float current_chi = 0.0;
+        std::vector<unsigned int> n_inliers(n_iterations, 0);
+        std::vector<float> chi_stats(n_iterations, 0.0);
+        cv::Mat H, b;
+        cv::Mat error = cv::Mat::zeros(2,1,CV_32F);
+        cv::Mat J = cv::Mat::zeros(2,6,CV_32F);
+        const cv::Mat DampingMatrix = \
+                    cv::Mat::eye(6, 6, CV_32F)*damping_factor;
+        
+        // Consider guessed_pose as world w.r.t. camera (so its inverse)
+        invert_transformation_matrix(guessed_pose);
+
+        // For each iteration
+        for(unsigned int iter=0; iter<n_iterations; ++iter) {
+            
+            // Reset H and b
+            H = cv::Mat::zeros(6,6,CV_32F);
+            b = cv::Mat::zeros(6,1,CV_32F);
+
+            // For each observation
+            for(unsigned int obs_idx=0; obs_idx<n_observations; ++obs_idx) {
+
+                // If the current observation does not refers to the considered
+                // measurement, ignore it
+                if(landmark_observations[obs_idx].measurement_idx != meas_idx)
+                    continue;
+                
+                // Take the guessed landmark position of the current observation
+                const cv::Point3f& guessed_landmark = \
+                        landmarks[landmark_observations[obs_idx].landmark_idx];
+                
+                // Take the corresponding measured point
+                const cv::KeyPoint& measured_point = \
+                        meas.getPoints()[landmark_observations[obs_idx].point_idx];
+                
+                // Compute error and jacobian
+                if(!error_and_jacobian_Posit(guessed_pose, guessed_landmark, \
+                                                measured_point, K, img_rows, \
+                                                img_cols, error, J))
+                    continue;   // Discard not valid projections
+
+                // Compute chi error
+                const float& e_1 = error.at<float>(0,0);
+                const float& e_2 = error.at<float>(1,0);
+                current_chi = (e_1*e_1) + (e_2*e_2);
+
+                // Deal with outliers
+                if(current_chi > threshold_to_ignore)
+                    continue;
+
+                // Robust kernel
+                if(current_chi > kernel_threshold) {
+                    error *= sqrt(kernel_threshold/current_chi);
+                    current_chi = kernel_threshold;
+                } else {
+                    ++n_inliers[iter];
+                }
+
+                // Update chi stats
+                chi_stats[iter] += current_chi;
+
+                // Update H and b
+                H += J.t()*J;
+                b += J.t()*error;
+
+            }
+
+            // Damping the H matrix
+            H += DampingMatrix;
+
+            // Solve linear system to get the perturbation
+            Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> \
+                        H_Eigen(H.ptr<float>(), H.rows, H.cols);
+            Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> \
+                        b_Eigen(b.ptr<float>(), b.rows, b.cols);
+            Eigen::VectorXf dx_Eigen = H_Eigen.ldlt().solve(-b_Eigen);
+            cv::Mat dx(dx_Eigen.rows(), dx_Eigen.cols(), CV_32F, dx_Eigen.data());
+
+            // Apply the perturbation
+            apply_perturbation_Tmatrix(dx, guessed_pose, 0);
+        }
+
+        // Reset the pose as the camera w.r.t. world (re-invert)
+        invert_transformation_matrix(guessed_pose);
+
     }
 
 } // namespace SLucAM

@@ -172,7 +172,7 @@ namespace SLucAM {
         // pose->pose
         std::vector<PoseObservation> _pose_observations;
 
-        // In thi vector, in position i we have how the observed pose i is 
+        // In this vector, in position i we have how the observed pose i is 
         // "seen" by the pose i-1
         std::vector<cv::Mat> _poses_measurements; 
 

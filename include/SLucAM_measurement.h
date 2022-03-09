@@ -31,6 +31,8 @@ namespace SLucAM {
 
         Measurement(const std::string filename, \
                     const cv::Ptr<cv::Feature2D>& detector);
+        
+        Measurement(std::vector<cv::KeyPoint>& points) : _points(points) {};
 
         const std::string& getName() const {return this->_img_name;};
 

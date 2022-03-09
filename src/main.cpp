@@ -92,27 +92,82 @@ int main() {
 
     // -----------------------------------------------------------------------------
     // PROJECTIVE ICP TEST
-    // -----------------------------------------------------------------------------
+    /* -----------------------------------------------------------------------------
     
-    cv::Mat Xr = (cv::Mat_<float>(4,4) << \
-    0.93969262, -0.34202009, 1.0313163e-06, 0.72615826, \
-    0.34201992, 0.93969268, 9.6002213e-07, 0.68752754, \
-    -1.2869932e-06, -6.0532057e-07, 1, -7.8231224e-06, \
-    0, 0, 0, 1);
+    // Create the guessed pose and landmarks
+    cv::Mat guessed_pose = (cv::Mat_<float>(4,4) << \
+                    0.93969262, -0.34202009, 1.0313163e-06, 0.72615826, \
+                    0.34201992, 0.93969268, 9.6002213e-07, 0.68752754, \
+                    -1.2869932e-06, -6.0532057e-07, 1, -7.8231224e-06, \
+                    0, 0, 0, 1);
+    cv::Point3f l1(12.34, 45.6, 3.45);
+    cv::Point3f l2(11.34, 5.6, 1.45);
+    cv::Point3f l3(12.4, 4.6, 54.0);
+    cv::Point3f l4(2.34, 8.2, 23.1);
+    cv::Point3f l5(5.46, 23.7, 6.8);
+    cv::Point3f l6(12.0, 6.54, 354.6);
+    cv::Point3f l7(11.67, 34.78, 3.45);
+    cv::Point3f l8(14.34, 5.67, 89.5);
+    std::vector<cv::Point3f> landmarks = {l1, l2, l3, l4, l5, l6, l7, l8};
 
-    cv::Point3f Xl = cv::Point3f(10.0757,-6.46847,31.9809);
+    // Create measurement 1
+    std::vector<cv::KeyPoint> points1 = {};
+    SLucAM::Measurement new_meas1(points1);
 
-    cv::KeyPoint z = cv::KeyPoint(cv::Point2f(46.06, 13.875), 1);
+    // Create measurement 2
+    cv::KeyPoint p1(cv::Point2f(54, 4), 1);
+    cv::KeyPoint p2(cv::Point2f(59, 45), 1);
+    cv::KeyPoint p3(cv::Point2f(4, 487), 1);
+    cv::KeyPoint p4(cv::Point2f(1, 1), 1);
+    cv::KeyPoint p5(cv::Point2f(4, 4), 1);
+    cv::KeyPoint p6(cv::Point2f(45, 64), 1);
+    cv::KeyPoint p7(cv::Point2f(8, 89), 1);
+    cv::KeyPoint p8(cv::Point2f(98, 89), 1);
+    cv::KeyPoint p9(cv::Point2f(2, 32), 1);
+    std::vector<cv::KeyPoint> points2 = {p1, p2, p3, p4, p5, p6, p7, p8, p9};
+    SLucAM::Measurement new_meas2(points2);
 
-    cv::Mat error = cv::Mat::zeros(2,1, CV_32F);
-    cv::Mat J = cv::Mat::zeros(2,6, CV_32F);
-    bool res = SLucAM::error_and_jacobian_Posit(Xr, Xl, z, K, 2*K.at<float>(1,2), 2*K.at<float>(0,2),\
-                                    error, J);
+    // Create measurements
+    std::vector<SLucAM::Measurement> new_measurements = {new_meas1, new_meas2};
 
-    cout << res << endl;
-    cout << error << endl;
-    cout << J << endl;
+    // Create landmark_observations
+    std::vector<SLucAM::LandmarkObservation> landmark_observations;
+    landmark_observations.emplace_back(0, 0, 0, 0);
+    landmark_observations.emplace_back(0, 0, 1, 0);
 
+    landmark_observations.emplace_back(0, 1, 0, 0);
+    landmark_observations.emplace_back(0, 1, 1, 3);
+
+    landmark_observations.emplace_back(0, 2, 0, 0);
+    landmark_observations.emplace_back(0, 2, 1, 7);
+
+    landmark_observations.emplace_back(0, 3, 0, 0);
+    landmark_observations.emplace_back(0, 3, 1, 8);
+
+    landmark_observations.emplace_back(0, 4, 0, 0);
+    landmark_observations.emplace_back(0, 4, 1, 6);
+
+    landmark_observations.emplace_back(0, 5, 0, 0);
+    landmark_observations.emplace_back(0, 5, 1, 2);
+
+    start = high_resolution_clock::now();
+    SLucAM::perform_Posit(guessed_pose, \
+                  new_measurements, \
+                  1, \
+                  landmark_observations, \
+                  landmarks, \
+                  state.getCameraMatrix(), \
+                  1000, \
+                  20000000, \
+                  20000000, \
+                  1);
+    stop = high_resolution_clock::now();
+    auto duration2 = duration_cast<microseconds>(stop - start);
+    cout << "duration: " << duration2.count() << " microseconds" << endl;
+
+    cout << endl << "Optimized Pose: " << endl << guessed_pose << endl;
+    */
+   
     return 0;
 }
 

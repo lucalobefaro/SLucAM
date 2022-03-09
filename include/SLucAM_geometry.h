@@ -32,6 +32,7 @@ namespace SLucAM {
                                     std::vector<cv::Point3f>& triangulated_points);
     void apply_perturbation_Tmatrix(const cv::Mat& perturbation, \
                                     cv::Mat& T_matrix, const unsigned int& starting_idx);
+    void invert_transformation_matrix(cv::Mat& T_matrix);
 } // namespace SLucAM
 
 
@@ -65,19 +66,23 @@ namespace SLucAM {
 // Projective ICP functions
 // -----------------------------------------------------------------------------
 namespace SLucAM {
-    void perform_Posit(const Measurement& meas, \
+    void perform_Posit(cv::Mat& guessed_pose, \
+                        const std::vector<Measurement>& measurements, \
+                        const unsigned int& meas_idx, \
+                        const std::vector<LandmarkObservation>& landmark_observations, \
                         const std::vector<cv::Point3f>& landmarks, \
-                        cv::Mat& K, \
+                        const cv::Mat& K, \
                         const unsigned int& n_iterations, \
                         const float& kernel_threshold, \
-                        const float& threshold_to_ignore);
+                        const float& threshold_to_ignore, \
+                        const float& damping_factor);
     bool error_and_jacobian_Posit(const cv::Mat& guessed_pose, \
                                 const cv::Point3f& guessed_landmark, \
                                 const cv::KeyPoint& measured_point, \
                                 const cv::Mat& K, \
                                 const float& img_rows, \
                                 const float& img_cols, \
-                                cv::Mat& error, cv::Mat J);
+                                cv::Mat& error, cv::Mat& J);
 } // namespace SLucAM
 
 
