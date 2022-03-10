@@ -26,7 +26,7 @@ namespace SLucAM {
     /*
     * This constructor allows us to reserve some expected space for the vector
     * of poses and the vector of landmarks, just for optimization. It also need
-    * the camera matrix K.
+    * the camera matrix K. It also create the matcher (default).
     * TODO: do shrink to fit somewhere. 
     */
     State::State(cv::Mat& K, std::vector<Measurement>& measurements, \
@@ -37,6 +37,7 @@ namespace SLucAM {
         this->_measurements = measurements;
         this->_poses.reserve(expected_poses);
         this->_landmarks.reserve(expected_landmarks);
+        this->_matcher = cv::BFMatcher(cv::NORM_HAMMING, true);
 
     }
 

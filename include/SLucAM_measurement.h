@@ -28,26 +28,23 @@ namespace SLucAM {
     class Measurement {
     
     public:
-
-        Measurement(const std::string filename, \
-                    const cv::Ptr<cv::Feature2D>& detector);
         
-        Measurement(std::vector<cv::KeyPoint>& points) : _points(points) {};
+        Measurement(std::vector<cv::KeyPoint>& points, \
+                    cv::Mat& descriptors);
 
-        const std::string& getName() const {return this->_img_name;};
+        const std::vector<cv::KeyPoint>& getPoints() const \
+                {return this->_points;};
 
-        const std::vector<cv::KeyPoint>& getPoints() const {return this->_points;};
+        const std::vector<cv::KeyPoint>& getNormalizedPoints() const \
+                {return this->_normalized_points;};
 
-        const std::vector<cv::KeyPoint>& getNormalizedPoints() const {return this->_normalized_points;};
+        const cv::Mat& getDescriptors() const \
+                {return this->_descriptors;};
 
-        const cv::Mat& getDescriptors() const {return this->_descriptors;};
-
-        const cv::Mat& getTNorm() const {return this->_T_norm;};
+        const cv::Mat& getTNorm() const \
+                {return this->_T_norm;};
 
     private:
-
-        // The path of the image to wich this measurement refers to
-        std::string _img_name;
 
         // The set of points in the image and the same point normalized
         std::vector<cv::KeyPoint> _points;

@@ -83,6 +83,8 @@ namespace SLucAM {
     
     public:
 
+        State() {};
+
         State(cv::Mat& K, std::vector<Measurement>& measurements, \
             const unsigned int expected_poses, \
             const unsigned int expected_landmarks);
@@ -96,17 +98,26 @@ namespace SLucAM {
                             const unsigned int& measure1_idx, \
                             const unsigned int& measure2_idx);
 
-        const std::vector<cv::Mat>& getPoses() const {return this->_poses;};
+        const std::vector<cv::Mat>& getPoses() const \
+                {return this->_poses;};
 
-        const std::vector<Measurement>& getMeasurements() const {return this->_measurements;};
+        const std::vector<Measurement>& getMeasurements() const \
+                {return this->_measurements;};
 
-        const std::vector<cv::Point3f>& getLandmarks() const {return this->_landmarks;};
+        const std::vector<cv::Point3f>& getLandmarks() const \
+                {return this->_landmarks;};
 
-        const cv::Mat& getCameraMatrix() const {return this->_K;};
+        const cv::Mat& getCameraMatrix() const \
+                {return this->_K;};
 
-        const std::vector<LandmarkObservation>& getLandmarkObservations() const {return this->_landmark_observations;};
+        const std::vector<LandmarkObservation>& getLandmarkObservations() const \
+                {return this->_landmark_observations;};
 
-        const std::vector<PoseObservation>& getPoseObservations() const {return this->_pose_observations;};
+        const std::vector<PoseObservation>& getPoseObservations() const \
+                {return this->_pose_observations;};
+
+        const cv::BFMatcher& getMatcher() const \
+                {return this->_matcher;};
 
         void performBundleAdjustment(const float& n_iterations, \
                                         const float& damping_factor, \
@@ -182,6 +193,9 @@ namespace SLucAM {
 
         // Camera matrix
         cv::Mat _K;
+
+        // Matcher to use to match different images
+        cv::BFMatcher _matcher;
 
     };
 

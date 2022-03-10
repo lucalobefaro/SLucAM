@@ -10,11 +10,13 @@
 #include <SLucAM_initialization.h>
 #include <SLucAM_measurement.h>
 #include <SLucAM_state.h>
+#include <SLucAM_dataset.h>
 
 #include <chrono>
 #include <algorithm>
 #include <stdlib.h>     /* srand, rand */
 #include <time.h>       /* time */
+#include <filesystem>
 
 using namespace std::chrono;
 using namespace std;
@@ -22,8 +24,21 @@ using namespace std;
 
 
 int main() {
-    
+
     // -----------------------------------------------------------------------------
+    // Load Dataset
+    // -----------------------------------------------------------------------------
+    SLucAM::State state;
+    SLucAM::load_my_dataset("../data/my_dataset/", state);
+
+
+    // -----------------------------------------------------------------------------
+    // INITIALIZATION
+    // -----------------------------------------------------------------------------
+
+
+    
+    /* -----------------------------------------------------------------------------
     // Feature extraction
     // -----------------------------------------------------------------------------
     string filename_img1 = "../data/images/image1.jpg";
@@ -35,27 +50,6 @@ int main() {
     SLucAM::Measurement meas2(filename_img2, orb_detector);
 
     std::vector<SLucAM::Measurement> measurements = {meas1, meas2};
-
-    
-    // -----------------------------------------------------------------------------
-    // Load camera infos
-    // -----------------------------------------------------------------------------
-    cv::Mat K = cv::Mat::eye(3,3,CV_32F);
-    K.at<float>(0,0) = 852.6132831012704;
-    K.at<float>(0,1) = 0;
-    K.at<float>(0,2) = 481.24842468649103;
-    K.at<float>(1,0) = 0;
-    K.at<float>(1,1) = 859.3748334552829;
-    K.at<float>(1,2) = 259.6723142881928;
-    K.at<float>(2,0) = 0;
-    K.at<float>(2,1) = 0;
-    K.at<float>(2,2) = 1;
-
-
-    // -----------------------------------------------------------------------------
-    // Create state
-    // -----------------------------------------------------------------------------
-    SLucAM::State state(K,measurements,2,221);
 
 
     // -----------------------------------------------------------------------------

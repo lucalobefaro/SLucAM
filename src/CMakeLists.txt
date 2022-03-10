@@ -1,5 +1,6 @@
 ### LIBRARIES ####
 add_library(SLucAM_library SHARED
+SLucAM_dataset.cpp
 SLucAM_geometry.cpp
 SLucAM_image.cpp
 SLucAM_initialization.cpp

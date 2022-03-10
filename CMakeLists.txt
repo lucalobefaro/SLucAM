@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.12)
 project(SLucAM VERSION 1.0)
 
 # C++ version
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
 ### OPENCV ###
 find_package(OpenCV REQUIRED)

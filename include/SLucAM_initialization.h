@@ -22,10 +22,7 @@
 // -----------------------------------------------------------------------------
 namespace SLucAM {
 
-   bool initialize(State& state,
-                    const cv::BFMatcher& matcher, \
-                    const unsigned int measure1_idx, \
-                    const unsigned int measure2_idx, \
+   bool initialize(State& state, \
                     const unsigned int& ransac_iter=200);
 
 } // namespace SLucAM

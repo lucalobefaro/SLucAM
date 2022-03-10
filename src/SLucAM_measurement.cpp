@@ -18,26 +18,19 @@
 namespace SLucAM {
 
     /*
-    * Constructor of the class Measurement. It takes the image to which the 
-    * measurement refers to and the detector to use to extract the keypoints
-    * and generate all the information needed about the image.
-    * Inputs:
-    *   filename: path of the image
-    *   detector: tool to extract the keypoints
+    * Constructor of the class Measurement. It takes the vector of points
+    * for a given measurements and the relative image descriptors. It
+    * normalize the points also
     */
-    Measurement::Measurement(const std::string filename, \
-                            const cv::Ptr<cv::Feature2D>& detector) {
+    Measurement::Measurement(std::vector<cv::KeyPoint>& points, \
+                            cv::Mat& descriptors) {
         
-        // Load the image
-        this->_img_name = filename;
-        cv::Mat img;
-        SLucAM::load_image(filename, img); // TODO: implement error in loading (false)
-        
-        // Detect keypoints
-        detector->detectAndCompute(img, cv::Mat(), this->_points, this->_descriptors);
+        // Store the points
+        this->_points = points;
+        this->_descriptors = descriptors;
 
         // Normalize points
-        SLucAM::normalize_points(this->_points, this->_normalized_points, this->_T_norm);
+        normalize_points(this->_points, this->_normalized_points, this->_T_norm);
     }
 
 } // namespace SLucAM
