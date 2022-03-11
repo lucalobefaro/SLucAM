@@ -20,7 +20,7 @@ using namespace std;
 // -----------------------------------------------------------------------------
 namespace SLucAM {
 
-    /* TODO: correct description
+    /* 
     * Function that performs SLAM initialization.
     * Inputs:
     *   state: the state that contains all the measurements and where all the
@@ -30,13 +30,15 @@ namespace SLucAM {
     *   true if the initialization is correctly performed, false otherwise
     */
     bool initialize(State& state, \
-                    const unsigned int& ransac_iter) {
+                    const unsigned int& ransac_iter, \
+                    const float& rotation_only_threshold_rate) {
         
         // Initialization
         const cv::Mat& K = state.getCameraMatrix();
         const cv::BFMatcher& matcher = state.getMatcher();
         const unsigned int n_measurements = state.getMeasurements().size();
         bool initialization_performed = false;
+        float current_inliers_percentage;
 
         // If we do not have enough measurements refuse initialization
         if(n_measurements < 2) return false; 
@@ -100,12 +102,17 @@ namespace SLucAM {
                                                                     inliers_mask_H, \
                                                                     ransac_iter);
 
-            // TODO: Determine rotation only ???
+            // Compute the "rotation_only_threshold_rate"% of inliers obtained with F
+            current_inliers_percentage = (rotation_only_threshold_rate*n_inliers_F)/100.0;
+
             // If we have a rotation only case (or a close one) between 
             // the two measurements, refuse the initialization between them and
             // go with the next measurement couple (if any)
-            if(false) {
-                cout << "ROTATION ONLY" << endl;
+            // The rotation only case is detected if the #inliers obtained with H is
+            // "near enough" the #inliers obtained with F (the neighborhood range
+            // is determined by rotation_only_threshold_rate)
+            if(n_inliers_H > (n_inliers_F-current_inliers_percentage)) {
+                cout << "ROTATION ONLY" << endl;    // TODO: delete this
                 continue;
             }
                 
@@ -138,7 +145,9 @@ namespace SLucAM {
                                 current_second_measure-1, current_second_measure);
             
             // A good initialization is performed, so exit from the cycle
+            // and memorize the last analyzed measurement
             initialization_performed = true;
+            state.setLastMeasurementIdx(current_second_measure);
             break;
         }
 

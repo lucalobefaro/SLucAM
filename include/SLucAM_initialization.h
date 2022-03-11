@@ -23,7 +23,8 @@
 namespace SLucAM {
 
    bool initialize(State& state, \
-                    const unsigned int& ransac_iter=200);
+                    const unsigned int& ransac_iter=200, \
+                    const float& rotation_only_threshold_rate=5);
 
 } // namespace SLucAM
 

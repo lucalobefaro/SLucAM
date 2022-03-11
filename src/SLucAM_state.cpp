@@ -38,6 +38,7 @@ namespace SLucAM {
         this->_poses.reserve(expected_poses);
         this->_landmarks.reserve(expected_landmarks);
         this->_matcher = cv::BFMatcher(cv::NORM_HAMMING, true);
+        this->_last_measurement_idx = 0;
 
     }
 
@@ -101,6 +102,105 @@ namespace SLucAM {
             this->_landmark_observations.emplace_back(1, this->_landmarks.size()-1, \
                         measure2_idx, matches[idxs[i]].trainIdx);
         } 
+    }
+
+
+    /*
+    * This function takes the next measurement to analyze and:
+    * 1. Check what landmarks that we already know are seen from the
+    *    new measurement (the ones that match with the previous one)
+    *    and update the _landmark_observations structure
+    * 2. Perform Projective ICP to determine the new pose and update
+    *    the _pose_observations and _poses_measurements structures
+    *    (it also add it to the _poses vector)
+    * 3. If specified (by triangulate_new_points) detect new landmarks
+    *    seen from the new measurement never seen before and triangulate 
+    *    them
+    * Outputs:
+    *   false in case of error (when there is no more measurement to
+    *   integrate)
+    */
+    bool State::updateState(const bool& triangulate_new_points) {
+
+        // If we have no more measurement to integrate, return error
+        if(this->noMoreMeasurements())
+            return false;
+
+        // Initialization
+        const unsigned int n_observations = this->_landmark_observations.size();
+        const unsigned int meas2_idx = this->_last_measurement_idx+1;
+        const unsigned int meas1_idx = meas2_idx-1;
+
+        // Take the measurements to analyze
+        const SLucAM::Measurement& meas1 = \
+                this->_measurements[meas1_idx];
+        const SLucAM::Measurement& meas2 = \
+                this->_measurements[meas2_idx];
+        
+        // Match them
+        vector<cv::DMatch> matches;
+        match_measurements(meas1, meas2, matches, this->_matcher);
+
+        // Create a vector in which in position i we have the idx of the 
+        // point in meas2 to which the point i in meas1 corresponds (-1
+        // if we have no correspondance for such a point) 
+        // TODO: this trick can be avoided by mantaining a vector of 
+        // association point->landmark in each measurement
+        const unsigned int n_matches = matches.size();
+        vector<int> point1_to_point2(meas1.getPoints().size(), -1);
+        for(unsigned int i=0; i<n_matches; ++i) {
+            point1_to_point2[matches[i].queryIdx] = matches[i].trainIdx;
+        }
+
+        // Build the new observations taken from the new integrate 
+        // measurement by expanding _landmark_observations
+        // memorizing the points in meas2 from which already knew 
+        // landmarks are observed
+        this->_landmark_observations.reserve(\
+                this->_landmark_observations.size() + n_matches);
+        unsigned int current_meas2_point_idx;
+        for(unsigned int obs_idx=0; obs_idx<n_observations; ++obs_idx) {
+
+            // If the current observation does not refers to the considered
+            // measurement, ignore it
+            if(this->_landmark_observations[obs_idx].measurement_idx != meas1_idx)
+                continue;
+            
+            // Get the point in meas2 that correspond to this observation
+            current_meas2_point_idx = point1_to_point2[this->_landmark_observations[obs_idx].point_idx];
+            
+            // If the current observation is not about a point that matches with 
+            // the next measurement, ignore it
+            if(current_meas2_point_idx == -1)
+                continue;
+            
+            // Add a new observation
+            this->_landmark_observations.emplace_back(\
+                this->_poses.size(), \
+                this->_landmark_observations[obs_idx].landmark_idx, \
+                meas2_idx, \
+                current_meas2_point_idx
+            );
+
+        }
+        this->_landmark_observations.shrink_to_fit();
+
+        // Determine the new pose
+        // TODO: determine good values for thresholds
+        this->_poses.emplace_back(this->_poses[this->_poses.size()-1]);
+        perform_Posit(this->_poses.back(), this->_measurements, \
+                        meas2_idx, this->_landmark_observations, \
+                        this->_landmarks, this->_K, \
+                        10, 10000, 10000, 1);
+
+        // If requested add new landmarks triangulating new matches 
+        // between the two considered measurements
+        if(triangulate_new_points) {
+            // TODO
+        }
+
+        return true;
+
     }
 
 

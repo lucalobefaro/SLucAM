@@ -83,7 +83,7 @@ namespace SLucAM {
     
     public:
 
-        State() {};
+        State() {this->_last_measurement_idx=0;};
 
         State(cv::Mat& K, std::vector<Measurement>& measurements, \
             const unsigned int expected_poses, \
@@ -97,6 +97,8 @@ namespace SLucAM {
                             const std::vector<unsigned int>& idxs, \
                             const unsigned int& measure1_idx, \
                             const unsigned int& measure2_idx);
+
+        bool updateState(const bool& triangulate_new_points);
 
         const std::vector<cv::Mat>& getPoses() const \
                 {return this->_poses;};
@@ -118,6 +120,17 @@ namespace SLucAM {
 
         const cv::BFMatcher& getMatcher() const \
                 {return this->_matcher;};
+        
+        const unsigned int& getLastMeasurementIdx() const \
+                {return this->_last_measurement_idx;};
+        
+        void setLastMeasurementIdx(const unsigned int new_last_measurement_idx) {
+            this->_last_measurement_idx = new_last_measurement_idx;
+        };
+
+        bool noMoreMeasurements() {
+            return (this->_last_measurement_idx >= this->_measurements.size()-1);
+        };
 
         void performBundleAdjustment(const float& n_iterations, \
                                         const float& damping_factor, \
@@ -177,7 +190,7 @@ namespace SLucAM {
 
         // In this vector we have the informations of each observation
         // pose->landmark
-        std::vector<LandmarkObservation> _landmark_observations;
+        std::vector<LandmarkObservation> _landmark_observations;    // TODO: this can be optimized
 
         // In this vector we have the informations of each observation
         // pose->pose
@@ -185,7 +198,7 @@ namespace SLucAM {
 
         // In this vector, in position i we have how the observed pose i is 
         // "seen" by the pose i-1
-        std::vector<cv::Mat> _poses_measurements; 
+        std::vector<cv::Mat> _poses_measurements;   // TODO: this is redundant
 
         // The vector containing all the triangulated points, ordered
         // by insertion
@@ -196,6 +209,9 @@ namespace SLucAM {
 
         // Matcher to use to match different images
         cv::BFMatcher _matcher;
+
+        // Reference to the last analyzed measurement
+        unsigned int _last_measurement_idx;
 
     };
 
