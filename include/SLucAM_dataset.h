@@ -28,4 +28,28 @@ namespace SLucAM {
 
 
 
+// -----------------------------------------------------------------------------
+// Functions to deal with the Pering Laboratory Dataset
+// -----------------------------------------------------------------------------
+namespace SLucAM {
+    bool load_PRD_dataset(const std::string& dataset_folder, State& state);
+    bool load_PRD_camera_matrix(const std::string& filename, cv::Mat& K);
+} // namespace SLucAM
+
+
+
+// -----------------------------------------------------------------------------
+// Functions to save and load general infos on files
+// -----------------------------------------------------------------------------
+namespace SLucAM {
+    bool save_keypoints_on_file(const std::string& filename, \
+                                const std::vector<cv::KeyPoint>& points, \
+                                const cv::Mat& descriptors);
+    bool load_keypoints_from_file(const std::string& filename, \
+                                std::vector<cv::KeyPoint>& points, \
+                                cv::Mat& descriptors);
+} // namespace SLucAM
+
+
+
 #endif // SLUCAM_STATE_H

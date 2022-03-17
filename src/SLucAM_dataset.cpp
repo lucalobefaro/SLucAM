@@ -10,10 +10,10 @@
 #include <SLucAM_image.h>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 
 
 // TODO: delete this
-#include <iostream>
 using namespace std;
 
 
@@ -104,4 +104,207 @@ namespace SLucAM {
         return true;
     }
 
+} // namespace SLucAM
+
+
+
+// -----------------------------------------------------------------------------
+// Implementation of functions to deal with the Pering Laboratory Dataset
+// -----------------------------------------------------------------------------
+namespace SLucAM {
+    
+    /*
+    * This function allows to load the PRD dataset. If it is the first time we
+    * load it, we use the images to load the keypoints and we save them in
+    * a set of files, otherwise we use directly the data in the files.
+    * IMPORTANT: in order to understand if the data are already extracted
+    * previously, this function verify if the folder ./cam0/extracted_data/
+    * already exsists inside the specified dataset_folder, so in case of
+    * errors, please delete that folder before to start this function.
+    */  
+    bool load_PRD_dataset(const std::string& dataset_folder, State& state) {
+
+        // Initialization
+        const std::string csv_filename = dataset_folder+"cam0/data.csv";
+        const std::string imgs_folder = dataset_folder+"cam0/data/";
+        const std::string extracted_data_folder = dataset_folder+"cam0/extracted_data/";
+        const std::string camera_filename = dataset_folder+"cameraInfo.txt";
+        std::string current_line, current_el_filename;
+        unsigned int start_str_pose;
+        unsigned int tot_n_points = 0;
+        cv::Mat current_img, K;
+        cv::Ptr<cv::Feature2D> orb_detector = cv::ORB::create();
+        std::vector<Measurement> measurements;
+
+        // Check if the data from images are already extracted
+        // (if it is not the first time we use this dataset)
+        bool already_extracted = false;
+        if(std::filesystem::is_directory(extracted_data_folder))
+            already_extracted = true;
+
+        // If the data from images are not already extracted, create
+        // the directory where to save the extracted data
+        if(!already_extracted)
+            std::filesystem::create_directory(extracted_data_folder);
+
+        // Load the camera matrix
+        if(!load_PRD_camera_matrix(camera_filename, K)) 
+            return false;
+
+        // Open the csv file
+        std::fstream csv_file;
+        csv_file.open(csv_filename);
+        if(csv_file.fail()) return false;
+
+        // Ignore the first line
+        std::getline(csv_file, current_line);
+
+        // Load all images (if already extracted load infos from file)
+        measurements.reserve(1600);
+        while(std::getline(csv_file, current_line)) {
+            
+            // Get the img filename
+            std::stringstream ss(current_line);
+            std::getline(ss, current_line, ',');
+            std::getline(ss, current_el_filename, ',');
+
+            // If the keypoints from the images are not already extracted then 
+            // load the image, detect keypoints and save results on a file, 
+            // otherwise load them from the files
+            std::vector<cv::KeyPoint> points;
+            cv::Mat descriptors;
+            if(!already_extracted) {
+                if(!load_image(imgs_folder+current_el_filename, current_img)) {
+                    csv_file.close();
+                    return false;
+                }
+                orb_detector->detectAndCompute(current_img, cv::Mat(), \
+                                                points, descriptors);
+                current_el_filename = current_el_filename.substr(0, current_el_filename.size()-3) \
+                                            + "yml";
+                if(!save_keypoints_on_file(extracted_data_folder+current_el_filename, points, descriptors))
+                    return false;
+            } else {
+                current_el_filename = current_el_filename.substr(0, current_el_filename.size()-3) \
+                                            + "yml";
+                if(!load_keypoints_from_file(extracted_data_folder+current_el_filename, points, descriptors))
+                    return false;
+            }
+            
+            // Create new measurement
+            measurements.emplace_back(Measurement(points, descriptors));
+
+            // Count the number of points in the current measurement
+            tot_n_points += points.size();
+
+        }
+        measurements.shrink_to_fit();
+
+        // Close the csv file
+        csv_file.close();
+
+        // Initialize the state
+        state = State(K, measurements, measurements.size(), tot_n_points);
+
+        return true;
+    }
+
+    /*
+    * This function allows to load the camera matrix formatted for PRD 
+    * dataset.
+    */
+    bool load_PRD_camera_matrix(const std::string& filename, cv::Mat& K) {
+
+        // Initialization 
+        K = cv::Mat::eye(3,3,CV_32F);
+        std::string current_line;
+
+        // Open the file
+        std::fstream file;
+        file.open(filename);
+        if(file.fail()) return false;
+
+        // Ignore the first 3 lines
+        std::getline(file, current_line);
+        std::getline(file, current_line);
+        std::getline(file, current_line);
+
+        // Read the focal length
+        std::getline(file, current_line);
+        std::stringstream ss_focal_length(current_line);
+        ss_focal_length >> K.at<float>(0,0) >> K.at<float>(1,1); 
+
+        // Ignore next line
+        std::getline(file, current_line);
+
+        // Read the principal point
+        std::getline(file, current_line);
+        std::stringstream ss_principal_point(current_line);
+        ss_principal_point >> K.at<float>(0,2) >> K.at<float>(1,2);
+
+        // Close the file
+        file.close();
+
+        return true;
+    }
+    
+} // namespace SLucAM
+
+
+
+// -----------------------------------------------------------------------------
+// Implementation of functions to save and load general infos on files
+// -----------------------------------------------------------------------------
+namespace SLucAM {
+
+    /*
+    * This function save a set of keypoints and corresponding descriptors
+    * in a .yml file.
+    */
+    bool save_keypoints_on_file(const std::string& filename, \
+                                const std::vector<cv::KeyPoint>& points, \
+                                const cv::Mat& descriptors) {
+
+        // If the file already exists, delete it
+        if(std::filesystem::exists(filename))
+            std::filesystem::remove(filename);
+
+        // Open the file
+        cv::FileStorage file(filename, cv::FileStorage::WRITE);
+
+        // Save the infos
+        file << "keypoints" << points;
+        file << "descriptors" << descriptors;
+
+        // Close the file
+        file.release();
+        
+        return true;
+    }
+    
+
+    /*
+    * This function load a set of keypoints and corresponding descriptors
+    * from a .yml file
+    */
+    bool load_keypoints_from_file(const std::string& filename, \
+                                std::vector<cv::KeyPoint>& points, \
+                                cv::Mat& descriptors) {
+        
+        // Open the file
+        cv::FileStorage file(filename, cv::FileStorage::READ);
+
+        // Check validity
+        if(file["keypoints"].empty() || file["descriptors"].empty()) 
+            return false;
+
+        // Load the infos
+        file["keypoints"] >> points;
+        file["descriptors"] >> descriptors;
+
+        // Close the file
+        file.release();
+
+        return true;
+    }
 } // namespace SLucAM

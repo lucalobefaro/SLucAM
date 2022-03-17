@@ -34,22 +34,26 @@ int main() {
     // -----------------------------------------------------------------------------
     // Load Dataset
     // -----------------------------------------------------------------------------
-    if(!SLucAM::load_my_dataset("../data/my_dataset/", state)) {
+    cout << "LOADING THE DATASET ..." << endl;
+    if(!SLucAM::load_PRD_dataset("../data/Pering Laboratory Dataset - deer_robot/",state)) {
         cout << "ERROR: unable to load the specified dataset" << endl;
         return 1;
     }
+    cout << "DONE!" << endl;
 
 
     // -----------------------------------------------------------------------------
     // INITIALIZATION
     // -----------------------------------------------------------------------------
-    if(!SLucAM::initialize(state, 200)) {
+    cout << "INITIALIZATION ..." << endl;
+    if(!SLucAM::initialize(state, 200, 2)) {
         cout << "ERROR: unable to perform initialization" << endl;
         return 1;
     }
+    cout << "DONE!" << endl;
 
 
-    // -----------------------------------------------------------------------------
+    /* -----------------------------------------------------------------------------
     // OPTIMIZE INITIALIZATION
     // -----------------------------------------------------------------------------
     if(state.noMoreMeasurements()) {
@@ -66,6 +70,9 @@ int main() {
     }
     // TODO: determine good values for thresholds
     state.performBundleAdjustment(10, 1, 20000, 20000);
+    */
+
+
     
     /*
     start = high_resolution_clock::now();
