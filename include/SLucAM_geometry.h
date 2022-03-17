@@ -33,6 +33,8 @@ namespace SLucAM {
     void apply_perturbation_Tmatrix(const cv::Mat& perturbation, \
                                     cv::Mat& T_matrix, const unsigned int& starting_idx);
     void invert_transformation_matrix(cv::Mat& T_matrix);
+    void quaternion_to_matrix(const cv::Mat& quaternion, cv::Mat& R);
+    void matrix_to_quaternion(cv::Mat& R, cv::Mat& quaternion);
 } // namespace SLucAM
 
 

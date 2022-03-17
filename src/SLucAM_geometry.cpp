@@ -9,6 +9,7 @@
 #include <SLucAM_geometry.h>
 #include <Eigen/Core>
 #include <Eigen/Cholesky>
+#include <Eigen/Geometry>
 
 // TODO delete this
 #include <iostream>
@@ -279,6 +280,74 @@ namespace SLucAM {
         t_x = 0;
         t_y = 0;
         t_z = 0;
+    }
+
+
+
+    /*
+    * This function, given a quaternion represented as a cv::Mat with
+    * dim 4x1 and with this structure: [w; x; y; z], returns the
+    * corresponding rotation matrix R.
+    */
+    void quaternion_to_matrix(const cv::Mat& quaternion, cv::Mat& R) {
+
+        // Initialization
+        R = cv::Mat::zeros(3,3,CV_32F);
+
+        // Create the Eigen quaternion
+        Eigen::Quaternionf Eigen_quaternion;
+        Eigen_quaternion.w() = quaternion.at<float>(0,0);
+        Eigen_quaternion.x() = quaternion.at<float>(1,0);
+        Eigen_quaternion.y() = quaternion.at<float>(2,0);
+        Eigen_quaternion.z() = quaternion.at<float>(3,0);
+
+        // Convert it to R
+        Eigen::Matrix3f Eigen_R = Eigen_quaternion.normalized().toRotationMatrix();
+
+        // Back to cv representation
+        R.at<float>(0,0) = Eigen_R(0,0);
+        R.at<float>(0,1) = Eigen_R(0,1);
+        R.at<float>(0,2) = Eigen_R(0,2);
+        R.at<float>(1,0) = Eigen_R(1,0);
+        R.at<float>(1,1) = Eigen_R(1,1);
+        R.at<float>(1,2) = Eigen_R(1,2);
+        R.at<float>(2,0) = Eigen_R(2,0);
+        R.at<float>(2,1) = Eigen_R(2,1);
+        R.at<float>(2,2) = Eigen_R(2,2);
+    }
+
+
+
+    /*
+    * This function, given a rotation matrix represented as a cv::Mat, 
+    * returns the corresponding quaternion represented as a cv::Mat with 
+    * dim 4x1 and with this structure: [w; x; y; z].
+    */
+    void matrix_to_quaternion(cv::Mat& R, cv::Mat& quaternion) {
+
+        // Initialization
+        quaternion = cv::Mat::zeros(4,1,CV_32F);
+
+        // Create the Eigen matrix R
+        Eigen::Matrix3f Eigen_R(3,3);
+        Eigen_R(0,0) = R.at<float>(0,0);
+        Eigen_R(0,1) = R.at<float>(0,1);
+        Eigen_R(0,2) = R.at<float>(0,2);
+        Eigen_R(1,0) = R.at<float>(1,0);
+        Eigen_R(1,1) = R.at<float>(1,1);
+        Eigen_R(1,2) = R.at<float>(1,2);
+        Eigen_R(2,0) = R.at<float>(2,0);
+        Eigen_R(2,1) = R.at<float>(2,1);
+        Eigen_R(2,2) = R.at<float>(2,2);
+        
+        // Convert it to quaternion
+        Eigen::Quaternionf Eigen_quaternion(Eigen_R);
+
+        // Back to cv representation
+        quaternion.at<float>(0,0) = Eigen_quaternion.w();
+        quaternion.at<float>(1,0) = Eigen_quaternion.x();
+        quaternion.at<float>(2,0) = Eigen_quaternion.y();
+        quaternion.at<float>(3,0) = Eigen_quaternion.z();
     }
     
 } // namespace SLucAM

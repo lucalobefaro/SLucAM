@@ -18,6 +18,9 @@
 #include <time.h>       /* time */
 #include <filesystem>
 
+#include <Eigen/Core>
+#include <Eigen/Geometry>
+
 using namespace std::chrono;
 using namespace std;
 
@@ -26,8 +29,11 @@ using namespace std;
 int main() {
 
     // -----------------------------------------------------------------------------
-    // Create Environment
+    // Create Environment and set variables
     // -----------------------------------------------------------------------------
+    const std::string dataset_folder =  "../data/datasets/Pering Laboratory Dataset - deer_robot/";
+    const unsigned int n_ransac_iters = 200;
+    const unsigned int rotation_only_threshold_rate = 2;
     SLucAM::State state;
 
 
@@ -35,7 +41,7 @@ int main() {
     // Load Dataset
     // -----------------------------------------------------------------------------
     cout << "LOADING THE DATASET ..." << endl;
-    if(!SLucAM::load_PRD_dataset("../data/Pering Laboratory Dataset - deer_robot/",state)) {
+    if(!SLucAM::load_PRD_dataset(dataset_folder, state)) {
         cout << "ERROR: unable to load the specified dataset" << endl;
         return 1;
     }
@@ -46,7 +52,7 @@ int main() {
     // INITIALIZATION
     // -----------------------------------------------------------------------------
     cout << "INITIALIZATION ..." << endl;
-    if(!SLucAM::initialize(state, 200, 2)) {
+    if(!SLucAM::initialize(state, n_ransac_iters, rotation_only_threshold_rate)) {
         cout << "ERROR: unable to perform initialization" << endl;
         return 1;
     }
