@@ -16,7 +16,7 @@ using namespace std;
 
 
 // -----------------------------------------------------------------------------
-// Main initialization functions
+// Implementation of main initialization functions
 // -----------------------------------------------------------------------------
 namespace SLucAM {
 
@@ -49,7 +49,7 @@ namespace SLucAM {
                 ++current_second_measure) {
             
             // Take the current measurements
-            const Measurement& meas1 = state.getMeasurements()[current_second_measure-1];
+            const Measurement& meas1 = state.getMeasurements()[0];
             const Measurement& meas2 = state.getMeasurements()[current_second_measure];
 
             // Match the two measurements
@@ -142,7 +142,7 @@ namespace SLucAM {
             // Update state
             state.initializeState(X, triangulate_points, p_img1, p_img2, \
                                 matches, matches_filter, \
-                                current_second_measure-1, current_second_measure);
+                                0, current_second_measure);
             
             // A good initialization is performed, so exit from the cycle
             // and memorize the last analyzed measurement

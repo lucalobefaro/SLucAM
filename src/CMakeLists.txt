@@ -5,7 +5,8 @@ SLucAM_geometry.cpp
 SLucAM_image.cpp
 SLucAM_initialization.cpp
 SLucAM_measurement.cpp
-SLucAM_state.cpp)
+SLucAM_state.cpp
+SLucAM_visualization.cpp)
 
 
 ### EXECUTABLE ###

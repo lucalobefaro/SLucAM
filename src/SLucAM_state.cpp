@@ -186,12 +186,21 @@ namespace SLucAM {
         this->_landmark_observations.shrink_to_fit();
 
         // Determine the new pose
-        // TODO: determine good values for thresholds
-        this->_poses.emplace_back(this->_poses[this->_poses.size()-1]);
+        this->_poses.emplace_back(this->_poses[this->_poses.size()-1].clone());
         perform_Posit(this->_poses.back(), this->_measurements, \
                         meas2_idx, this->_landmark_observations, \
                         this->_landmarks, this->_K, \
-                        10, 10000, 10000, 1);
+                        50, 1000, 1000, 1);
+        
+        // Add the new pose observed
+        this->_pose_observations.emplace_back(this->_poses.size()-2, \
+                                            this->_poses.size()-1);
+        cv::Mat pose_1_inv = this->_poses[this->_poses.size()-2].clone();
+        invert_transformation_matrix(pose_1_inv);
+        this->_poses_measurements.emplace_back(pose_1_inv*this->_poses.back());
+        
+        // Increment the id of the last measurement analyzed
+        this->_last_measurement_idx++;
 
         // If requested add new landmarks triangulating new matches 
         // between the two considered measurements

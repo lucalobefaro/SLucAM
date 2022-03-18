@@ -775,7 +775,7 @@ namespace SLucAM {
                 // measurement, ignore it
                 if(landmark_observations[obs_idx].measurement_idx != meas_idx)
                     continue;
-                
+                                
                 // Take the guessed landmark position of the current observation
                 const cv::Point3f& guessed_landmark = \
                         landmarks[landmark_observations[obs_idx].landmark_idx];
