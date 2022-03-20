@@ -29,21 +29,26 @@ using namespace std;
 
 int main() {
 
+    // TODO: create Matcher class that will take the BFMathces or 
+    // data associations in the constructor in order to work
+
     // -----------------------------------------------------------------------------
     // Create Environment and set variables
     // -----------------------------------------------------------------------------
-    const std::string dataset_folder =  "../data/datasets/Pering Laboratory Dataset - deer_robot/";
+    const std::string dataset_folder =  "../data/datasets/my_synthetic_dataset/";
     const unsigned int n_ransac_iters = 200;
     const unsigned int rotation_only_threshold_rate = 2;
     const unsigned int how_many_meas_optimization = 5;
     SLucAM::State state;
+
+    std::vector<std::vector<unsigned int>> data_associations;
 
 
     // -----------------------------------------------------------------------------
     // Load Dataset
     // -----------------------------------------------------------------------------
     cout << endl << "LOADING THE DATASET ..." << endl;
-    if(!SLucAM::load_PRD_dataset(dataset_folder, state)) {
+    if(!SLucAM::load_synthetic_dataset(dataset_folder, state, data_associations)) {
         cout << "ERROR: unable to load the specified dataset" << endl;
         return 1;
     }
@@ -51,17 +56,23 @@ int main() {
 
 
     // -----------------------------------------------------------------------------
+    // Create Matcher
+    // -----------------------------------------------------------------------------
+    SLucAM::Matcher matcher(data_associations);
+
+
+    // -----------------------------------------------------------------------------
     // INITIALIZATION
     // -----------------------------------------------------------------------------
     cout << "INITIALIZATION ..." << endl;
-    if(!SLucAM::initialize(state, n_ransac_iters, rotation_only_threshold_rate)) {
+    if(!SLucAM::initialize(state, matcher, n_ransac_iters, rotation_only_threshold_rate)) {
         cout << "ERROR: unable to perform initialization" << endl;
         return 1;
     }
     cout << "DONE!" << endl << endl;
 
 
-    // -----------------------------------------------------------------------------
+    /* -----------------------------------------------------------------------------
     // OPTIMIZE INITIALIZATION
     // -----------------------------------------------------------------------------
     cout << "OPTIMIZING INITIALIZATION ..." << endl;
@@ -112,7 +123,7 @@ int main() {
     for(unsigned int i=0; i<n_poses; ++i) {
         SLucAM::visualize_pose_as_quaternion(first_pose_T*poses[i]);
     }
-    
+    */
 
     /*
     // HERE THE FUNCTION TO SPEED TEST

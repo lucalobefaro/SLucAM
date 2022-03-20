@@ -37,7 +37,6 @@ namespace SLucAM {
         this->_measurements = measurements;
         this->_poses.reserve(expected_poses);
         this->_landmarks.reserve(expected_landmarks);
-        this->_matcher = cv::BFMatcher(cv::NORM_HAMMING, true);
         this->_last_measurement_idx = 0;
 
     }
@@ -120,7 +119,8 @@ namespace SLucAM {
     *   false in case of error (when there is no more measurement to
     *   integrate)
     */
-    bool State::updateState(const bool& triangulate_new_points) {
+    bool State::updateState(const bool& triangulate_new_points, \
+                            Matcher& matcher) {
 
         // If we have no more measurement to integrate, return error
         if(this->noMoreMeasurements())
@@ -139,7 +139,7 @@ namespace SLucAM {
         
         // Match them
         vector<cv::DMatch> matches;
-        match_measurements(meas1, meas2, matches, this->_matcher);
+        matcher.match_measurements(meas1, meas2, matches);
 
         // Create a vector in which in position i we have the idx of the 
         // point in meas2 to which the point i in meas1 corresponds (-1

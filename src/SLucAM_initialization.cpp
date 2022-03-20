@@ -30,12 +30,12 @@ namespace SLucAM {
     *   true if the initialization is correctly performed, false otherwise
     */
     bool initialize(State& state, \
+                    Matcher& matcher, \
                     const unsigned int& ransac_iter, \
                     const float& rotation_only_threshold_rate) {
         
         // Initialization
         const cv::Mat& K = state.getCameraMatrix();
-        const cv::BFMatcher& matcher = state.getMatcher();
         const unsigned int n_measurements = state.getMeasurements().size();
         bool initialization_performed = false;
         float current_inliers_percentage;
@@ -54,7 +54,7 @@ namespace SLucAM {
 
             // Match the two measurements
             vector<cv::DMatch> matches;
-            SLucAM::match_measurements(meas1, meas2, matches, matcher);
+            matcher.match_measurements(meas1, meas2, matches);
 
             // Generate random sets of matches indices, one for iteration
             // TODO: optimize this

@@ -14,6 +14,7 @@
 // -----------------------------------------------------------------------------
 #include <opencv2/features2d.hpp>
 #include <SLucAM_measurement.h>
+#include <SLucAM_matcher.h>
 
 
 
@@ -98,7 +99,8 @@ namespace SLucAM {
                             const unsigned int& measure1_idx, \
                             const unsigned int& measure2_idx);
 
-        bool updateState(const bool& triangulate_new_points);
+        bool updateState(const bool& triangulate_new_points, \
+                        Matcher& matcher);
 
         const std::vector<cv::Mat>& getPoses() const \
                 {return this->_poses;};
@@ -117,9 +119,6 @@ namespace SLucAM {
 
         const std::vector<PoseObservation>& getPoseObservations() const \
                 {return this->_pose_observations;};
-
-        const cv::BFMatcher& getMatcher() const \
-                {return this->_matcher;};
         
         const unsigned int& getLastMeasurementIdx() const \
                 {return this->_last_measurement_idx;};
@@ -206,9 +205,6 @@ namespace SLucAM {
 
         // Camera matrix
         cv::Mat _K;
-
-        // Matcher to use to match different images
-        cv::BFMatcher _matcher;
 
         // Reference to the last analyzed measurement
         unsigned int _last_measurement_idx;

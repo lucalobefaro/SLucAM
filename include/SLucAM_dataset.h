@@ -39,6 +39,17 @@ namespace SLucAM {
 
 
 // -----------------------------------------------------------------------------
+// Functions to deal with my Synthetic Dataset
+// -----------------------------------------------------------------------------
+namespace SLucAM {
+    bool load_synthetic_dataset(const std::string& dataset_folder, State& state, \
+                                std::vector<std::vector<unsigned int>>& associations);
+    bool load_synthetic_camera_matrix(const std::string& filename, cv::Mat& K);
+} // namespace SLucAM
+
+
+
+// -----------------------------------------------------------------------------
 // Functions to save and load general infos on files
 // -----------------------------------------------------------------------------
 namespace SLucAM {

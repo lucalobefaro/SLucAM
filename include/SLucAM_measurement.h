@@ -1,8 +1,7 @@
 //
 // SLucAM_measurement.h
 //
-// In this module we have all the function to deal with measurements, we also
-// have the implementation of the Measurement class.
+// In this module we have the class to deal with measurements.
 //
 
 
@@ -44,6 +43,12 @@ namespace SLucAM {
         const cv::Mat& getTNorm() const \
                 {return this->_T_norm;};
 
+        const unsigned int getId() const \
+                {return this->_meas_id;};
+
+        // Take note of the next measurement id to use
+        static unsigned int _next_id;
+
     private:
 
         // The set of points in the image and the same point normalized
@@ -56,19 +61,11 @@ namespace SLucAM {
         // The matrix used to normalize the points
         cv::Mat _T_norm;
 
-    }; // class MEasurement
+        // The id of the current measurement
+        unsigned int _meas_id;
 
-} // namespace SLucAM
+    }; // class Measurement
 
-
-
-// -----------------------------------------------------------------------------
-// Utilities for the measurements
-// -----------------------------------------------------------------------------
-namespace SLucAM {
-    void match_measurements(const Measurement& meas1, const Measurement& meas2, \
-                            std::vector<cv::DMatch>& matches, \
-                            const cv::BFMatcher& matcher);
 } // namespace SLucAM
 
 

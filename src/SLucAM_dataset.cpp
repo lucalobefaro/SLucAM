@@ -253,6 +253,150 @@ namespace SLucAM {
 
 
 // -----------------------------------------------------------------------------
+// Functions to deal with my Synthetic Dataset
+// -----------------------------------------------------------------------------
+namespace SLucAM {
+
+    /*
+    * Function to load my synthetic dataset. 
+    * IMPORTANT: this dataset contains the associations not done on images
+    * but on 3D points ids, so we need to deal with this in the system.
+    * Indeed in the vector associations it contains in position i, the list
+    * of the ids for each point in the measurement i (ordered in the same
+    * way of the points).
+    * (This dataset is useful for test, because it contains no noise)
+    */
+    bool load_synthetic_dataset(const std::string& dataset_folder, State& state, \
+                                std::vector<std::vector<unsigned int>>& associations) {
+
+        // Initialization
+        std::string camera_matrix_filename = dataset_folder + \
+                        "camera_parameters.dat";
+        std::string csv_filename = dataset_folder + "data.csv";
+        std::string current_filename, current_line;
+        cv::Mat K;
+        std::vector<Measurement> measurements;
+        std::fstream current_file;
+        
+        // Load the camera matrix
+        if(!load_synthetic_camera_matrix(camera_matrix_filename, K))
+            return false;
+        
+        // Open the csv file
+        std::fstream csv_file;
+        csv_file.open(csv_filename);
+        if(csv_file.fail()) return false;
+
+        // Load all measurements
+        measurements.reserve(12);
+        associations.reserve(12);
+        while(std::getline(csv_file, current_line)) {
+            
+            // Get the current filename
+            std::stringstream ss_current_line_csv_file(current_line);
+            ss_current_line_csv_file >> current_filename; 
+            ss_current_line_csv_file >> current_filename;
+            current_filename = dataset_folder+current_filename;
+
+            // Open the current file
+            current_file.open(current_filename);
+            if(current_file.fail()) return false;
+
+            // Ignore the first 7 lines
+            std::getline(current_file, current_line);
+            std::getline(current_file, current_line);
+            std::getline(current_file, current_line);
+            std::getline(current_file, current_line);
+            std::getline(current_file, current_line);
+            std::getline(current_file, current_line);
+            std::getline(current_file, current_line);
+
+            // Read all the points
+            std::vector<cv::KeyPoint> points;
+            std::vector<unsigned int> ground_truth_ids;
+            points.reserve(2000); ground_truth_ids.reserve(2000);
+            while(std::getline(current_file, current_line)) {
+
+                unsigned int gt_id;
+                float x, y;                
+                std::stringstream ss_current_line_points(current_line);
+                
+                ss_current_line_points >> gt_id >> x >> y;
+
+                points.emplace_back(cv::KeyPoint(cv::Point2f(x,y), 1));
+                ground_truth_ids.emplace_back(gt_id);
+                
+            }
+            points.shrink_to_fit(); ground_truth_ids.shrink_to_fit();
+
+            // Create new measurements
+            // IMPORTANT: we have no descriptors in this dataset
+            cv::Mat descriptors;
+            measurements.emplace_back(Measurement(points, descriptors));
+            associations.emplace_back(ground_truth_ids);
+
+            // Close the current file
+            current_file.close();
+
+        }
+        measurements.shrink_to_fit();
+        associations.shrink_to_fit();
+
+        // Close the csv file
+        csv_file.close();
+
+        // Initialize the state
+        state = State(K, measurements, measurements.size(), 10000);
+
+        return true;
+
+    }
+
+
+    /*
+    * Function to load the K matrix for my synthetic dataset.
+    */
+    bool load_synthetic_camera_matrix(const std::string& filename, cv::Mat& K) {
+
+        // Initialization
+        K = cv::Mat::zeros(3,3,CV_32F);
+        std::string current_line;
+
+        // Open the file
+        std::fstream file;
+        file.open(filename);
+        if(file.fail()) return false;
+
+        // Ignore the first line;
+        std::getline(file, current_line);
+
+        // Load the first row
+        std::getline(file, current_line);
+        std::stringstream ss1(current_line);
+        ss1 >> K.at<float>(0,0) >> K.at<float>(0,1) >> K.at<float>(0,2);
+
+        // Load the second row
+        std::getline(file, current_line);
+        std::stringstream ss2(current_line);
+        ss2 >> K.at<float>(1,0) >> K.at<float>(1,1) >> K.at<float>(1,2);
+
+        // Load the third row
+        std::getline(file, current_line);
+        std::stringstream ss3(current_line);
+        ss3 >> K.at<float>(2,0) >> K.at<float>(2,1) >> K.at<float>(2,2);
+
+        // Close the file
+        file.close();
+
+        return true;
+
+    }
+
+} // namespace SLucAM
+
+
+
+// -----------------------------------------------------------------------------
 // Implementation of functions to save and load general infos on files
 // -----------------------------------------------------------------------------
 namespace SLucAM {
