@@ -39,6 +39,10 @@ int main() {
     const unsigned int n_ransac_iters = 200;
     const unsigned int rotation_only_threshold_rate = 2;
     const unsigned int how_many_meas_optimization = 5;
+    const float kernel_threshold_BA = 1000;
+    const float inliers_threshold_BA = 50;
+    const float damping_factor = 1;
+    const unsigned int n_BA_iters = 5;
     SLucAM::State state;
 
     std::vector<std::vector<unsigned int>> data_associations;
@@ -72,7 +76,7 @@ int main() {
     cout << "DONE!" << endl << endl;
 
 
-    /* -----------------------------------------------------------------------------
+    // -----------------------------------------------------------------------------
     // OPTIMIZE INITIALIZATION
     // -----------------------------------------------------------------------------
     cout << "OPTIMIZING INITIALIZATION ..." << endl;
@@ -82,48 +86,24 @@ int main() {
     }
     
     for(unsigned int i=0; i<how_many_meas_optimization; ++i) {
-        if(!state.updateState(false)){
+        if(!state.updateState(matcher, false)){
             cout << "ERROR: no more measurement to integrate" << endl;
             return 1;
         }
     }
-    state.performBundleAdjustment(20, 1000, 1000, 50);
-    cout << "DONE!" << endl << endl;
+    //state.performBundleAdjustment(n_BA_iters, damping_factor, \
+                                kernel_threshold_BA, inliers_threshold_BA);
     
 
     // -----------------------------------------------------------------------------
     // TEST
     // -----------------------------------------------------------------------------
-    // Compute the pose of the first pose in the PLD dataset
-    cv::Mat first_pose_quaternion = cv::Mat::zeros(4,1,CV_32F);
-    first_pose_quaternion.at<float>(0,0) = 0.523157477;
-    first_pose_quaternion.at<float>(1,0) = 0.506806552;
-    first_pose_quaternion.at<float>(2,0) = -0.474782467;
-    first_pose_quaternion.at<float>(3,0) = -0.494000465;
-    cv::Mat first_pose_R;
-    SLucAM::quaternion_to_matrix(first_pose_quaternion, first_pose_R);
-    cv::Mat first_pose_T = cv::Mat::eye(4,4,CV_32F);
-    first_pose_T.at<float>(0,3) = -1.62166202;
-    first_pose_T.at<float>(1,3) = 1.66993701;
-    first_pose_T.at<float>(2,3) = 0.107721001;
-    first_pose_T.at<float>(0,0) = first_pose_R.at<float>(0,0);
-    first_pose_T.at<float>(0,1) = first_pose_R.at<float>(0,1);
-    first_pose_T.at<float>(0,2) = first_pose_R.at<float>(0,2);
-    first_pose_T.at<float>(1,0) = first_pose_R.at<float>(1,0);
-    first_pose_T.at<float>(1,1) = first_pose_R.at<float>(1,1);
-    first_pose_T.at<float>(1,2) = first_pose_R.at<float>(1,2);
-    first_pose_T.at<float>(2,0) = first_pose_R.at<float>(2,0);
-    first_pose_T.at<float>(2,1) = first_pose_R.at<float>(2,1);
-    first_pose_T.at<float>(2,2) = first_pose_R.at<float>(2,2);
-    //SLucAM::invert_transformation_matrix(first_pose_T);
-
     const unsigned int n_poses = state.getPoses().size();
-    const vector<cv::Mat>& poses = state.getPoses();
-
     for(unsigned int i=0; i<n_poses; ++i) {
-        SLucAM::visualize_pose_as_quaternion(first_pose_T*poses[i]);
+        cout << "POSE " << i << endl;
+        cout << state.getPoses()[i] << endl << endl;
     }
-    */
+
 
     /*
     // HERE THE FUNCTION TO SPEED TEST

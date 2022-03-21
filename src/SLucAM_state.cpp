@@ -119,8 +119,8 @@ namespace SLucAM {
     *   false in case of error (when there is no more measurement to
     *   integrate)
     */
-    bool State::updateState(const bool& triangulate_new_points, \
-                            Matcher& matcher) {
+    bool State::updateState(Matcher& matcher, \
+                            const bool& triangulate_new_points) {
 
         // If we have no more measurement to integrate, return error
         if(this->noMoreMeasurements())
@@ -190,7 +190,7 @@ namespace SLucAM {
         perform_Posit(this->_poses.back(), this->_measurements, \
                         meas2_idx, this->_landmark_observations, \
                         this->_landmarks, this->_K, \
-                        50, 1000, 1000, 1);
+                        50, 1000, 5000, 1);
         
         // Add the new pose observed
         this->_pose_observations.emplace_back(this->_poses.size()-2, \
@@ -283,11 +283,11 @@ namespace SLucAM {
             Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> \
                         b_Eigen(b.ptr<float>(), b.rows, b.cols);
             Eigen::VectorXf dx_Eigen = H_Eigen.block(6,6,system_size-6,system_size-6)\
-                        .ldlt().solve(-b_Eigen.block(6,0,system_size-6,1));
+                        .llt().solve(-b_Eigen.block(6,0,system_size-6,1));
             cv::Mat dx(dx_Eigen.rows(), dx_Eigen.cols(), CV_32F, dx_Eigen.data());
 
             // Apply the perturbation (we assume that the first 6 elements of dx 
-            // are zero)
+            // are zero and not present in dx vector)
             this->boxPlus(dx);
         }
         

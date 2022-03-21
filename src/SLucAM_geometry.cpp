@@ -757,9 +757,6 @@ namespace SLucAM {
         cv::Mat J = cv::Mat::zeros(2,6,CV_32F);
         const cv::Mat DampingMatrix = \
                     cv::Mat::eye(6, 6, CV_32F)*damping_factor;
-        
-        // Consider guessed_pose as world w.r.t. camera (so its inverse)
-        invert_transformation_matrix(guessed_pose);
 
         // For each iteration
         for(unsigned int iter=0; iter<n_iterations; ++iter) {
@@ -830,9 +827,6 @@ namespace SLucAM {
             // Apply the perturbation
             apply_perturbation_Tmatrix(dx, guessed_pose, 0);
         }
-
-        // Reset the pose as the camera w.r.t. world (re-invert)
-        invert_transformation_matrix(guessed_pose);
 
     }
 

@@ -99,8 +99,8 @@ namespace SLucAM {
                             const unsigned int& measure1_idx, \
                             const unsigned int& measure2_idx);
 
-        bool updateState(const bool& triangulate_new_points, \
-                        Matcher& matcher);
+        bool updateState(Matcher& matcher, \
+                        const bool& triangulate_new_points);
 
         const std::vector<cv::Mat>& getPoses() const \
                 {return this->_poses;};

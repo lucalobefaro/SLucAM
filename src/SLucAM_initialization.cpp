@@ -152,7 +152,7 @@ namespace SLucAM {
         }
 
         // If we are not able to find a couple of measurements valid for 
-        // initialization, return error, true otherwise
+        // initialization, return false, true otherwise
         return initialization_performed;
     }
 
