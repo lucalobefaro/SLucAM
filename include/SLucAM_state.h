@@ -109,8 +109,8 @@ namespace SLucAM {
                             const unsigned int& ransac_iter=200, \
                             const float& rotation_only_threshold_rate=5);
         
-        bool updateState(Matcher& matcher, \
-                        const bool& triangulate_new_points);
+        bool integrateNewMeasurement(Matcher& matcher, \
+                                    const bool& triangulate_new_points=true);
         
         void performBundleAdjustment(const float& n_iterations, \
                                         const float& damping_factor, \
@@ -163,7 +163,6 @@ namespace SLucAM {
         static unsigned int buildLinearSystemPoses(\
                         const std::vector<cv::Mat>& poses, \
                         const std::vector<Keyframe>& keyframes, \
-                        const std::vector<cv::Mat>& poses_measurements, \
                         cv::Mat& H, cv::Mat& b, \
                         float& chi_tot, \
                         const float& kernel_threshold);

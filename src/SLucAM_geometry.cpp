@@ -248,38 +248,46 @@ namespace SLucAM {
 
 
     // Invert a transformation matrix in a fast way by transposing the
-    // rotational part and computin the translational part as
+    // rotational part and computing the translational part as
     // -R't
-    void invert_transformation_matrix(cv::Mat& T_matrix) {
+    cv::Mat& invert_transformation_matrix(const cv::Mat& T_matrix) {
 
-        // Transpose all matrix
-        T_matrix = T_matrix.t();
-
-        // Reference to rotational part
+        cv::Mat T_matrix_inv;
+        
+        // Reference to rotational part (in transpose way)
         const float& R_11 = T_matrix.at<float>(0,0);
-        const float& R_12 = T_matrix.at<float>(0,1);
-        const float& R_13 = T_matrix.at<float>(0,2);
-        const float& R_21 = T_matrix.at<float>(1,0);
+        const float& R_12 = T_matrix.at<float>(1,0);
+        const float& R_13 = T_matrix.at<float>(2,0);
+        const float& R_21 = T_matrix.at<float>(0,1);
         const float& R_22 = T_matrix.at<float>(1,1);
-        const float& R_23 = T_matrix.at<float>(1,2);
-        const float& R_31 = T_matrix.at<float>(2,0);
-        const float& R_32 = T_matrix.at<float>(2,1);
+        const float& R_23 = T_matrix.at<float>(2,1);
+        const float& R_31 = T_matrix.at<float>(0,2);
+        const float& R_32 = T_matrix.at<float>(1,2);
         const float& R_33 = T_matrix.at<float>(2,2);
 
         // Reference to the translational part
-        float& t_x = T_matrix.at<float>(3,0);
-        float& t_y = T_matrix.at<float>(3,1);
-        float& t_z = T_matrix.at<float>(3,2);
+        const float& t_x = T_matrix.at<float>(3,0);
+        const float& t_y = T_matrix.at<float>(3,1);
+        const float& t_z = T_matrix.at<float>(3,2);
+
+        // Transpose the rotational part
+        T_matrix_inv.at<float>(0,0) = R_11;
+        T_matrix_inv.at<float>(0,1) = R_12;
+        T_matrix_inv.at<float>(0,2) = R_13;
+        T_matrix_inv.at<float>(1,0) = R_21;
+        T_matrix_inv.at<float>(1,1) = R_22;
+        T_matrix_inv.at<float>(1,2) = R_23;
+        T_matrix_inv.at<float>(2,0) = R_31;
+        T_matrix_inv.at<float>(2,1) = R_32;
+        T_matrix_inv.at<float>(2,2) = R_33;
 
         // Compute the translational part
-        T_matrix.at<float>(0,3) = -(R_11*t_x + R_12*t_y + R_13*t_z);
-        T_matrix.at<float>(1,3) = -(R_21*t_x + R_22*t_y + R_23*t_z);
-        T_matrix.at<float>(2,3) = -(R_31*t_x + R_32*t_y + R_33*t_z);
+        T_matrix_inv.at<float>(0,3) = -(R_11*t_x + R_12*t_y + R_13*t_z);
+        T_matrix_inv.at<float>(1,3) = -(R_21*t_x + R_22*t_y + R_23*t_z);
+        T_matrix_inv.at<float>(2,3) = -(R_31*t_x + R_32*t_y + R_33*t_z);
 
-        // Put to zeros the bottom part (to reset transpose)
-        t_x = 0;
-        t_y = 0;
-        t_z = 0;
+        return T_matrix_inv;
+
     }
 
 
