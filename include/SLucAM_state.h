@@ -110,7 +110,11 @@ namespace SLucAM {
                             const float& rotation_only_threshold_rate=5);
         
         bool integrateNewMeasurement(Matcher& matcher, \
-                                    const bool& triangulate_new_points=true);
+                                    const bool& triangulate_new_points=true, \
+                                    const unsigned int& posit_n_iters=50, \
+                                    const float& posit_kernel_threshold=1000, \
+                                    const float& posit_threshold_to_ignore=5000, \
+                                    const float& posit_damping_factor=1);
         
         void performBundleAdjustment(const float& n_iterations, \
                                         const float& damping_factor, \

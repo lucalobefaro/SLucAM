@@ -742,9 +742,9 @@ namespace SLucAM {
     *           is too outlier to be considered
     */
     void perform_Posit(cv::Mat& guessed_pose, \
-                        const std::vector<Measurement>& measurements, \
-                        const unsigned int& meas_idx, \
-                        const std::vector<LandmarkObservation>& landmark_observations, \
+                        const Measurement& measurement, \
+                        const std::vector<std::pair<unsigned int, \
+                                unsigned int>>& points_associations, \
                         const std::vector<cv::Point3f>& landmarks, \
                         const cv::Mat& K, \
                         const unsigned int& n_iterations, \

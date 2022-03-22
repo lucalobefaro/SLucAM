@@ -113,7 +113,11 @@ namespace SLucAM {
     *   integrate)
     */
     bool State::integrateNewMeasurement(Matcher& matcher, \
-                                        const bool& triangulate_new_points) {
+                                        const bool& triangulate_new_points, \
+                                        const unsigned int& posit_n_iters, \
+                                        const float& posit_kernel_threshold, \
+                                        const float& posit_threshold_to_ignore, \
+                                        const float& posit_damping_factor) {
 
         // If we have no more measurement to integrate, return error
         if(this->reaminingMeasurements() == 0) return false;
@@ -127,22 +131,46 @@ namespace SLucAM {
         const SLucAM::Measurement& meas2 = getNextMeasurement();
         
         // Match them
+        // TODO: use a threshold for matches ?
         vector<cv::DMatch> matches;
         matcher.match_measurements(meas1, meas2, matches);
+        const unsigned int n_matches = matches.size();
 
-        // Create the association vector points->landmark by using the
+        // Create a vector in which in position i we have the idx of the 
+        // landmark to which refers the point i in the keyframe used as 
+        // first measurement, -1 if no such association exists
+        const unsigned int n_points = meas1.getPoints().size();
+        std::vector<int> point_2_landmark(n_points, -1);
+        const std::vector<std::pair<unsigned int, unsigned int>>& \
+                meas1_points_associations = last_keyframe.getPointsAssociations();
+        const unsigned int n_associations = meas1_points_associations.size();
+        for(unsigned int i=0; i<n_associations; ++i) {
+            point_2_landmark[meas1_points_associations[i].first] = \
+                meas1_points_associations[i].second;
+        }
+
+        // Create the association vector points<->landmark by using the
         // matched points for which we already have a 3D point prediction
         // in the first measurement
-        // TODO: use a threshold for matches
         std::vector<std::pair<unsigned int, unsigned int>> points_associations;
-        //TODO::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+        int current_3d_point_idx;
+        for(unsigned int i=0; i<n_matches; ++i) {
+            current_3d_point_idx = point_2_landmark[matches[i].queryIdx];
+            if(current_3d_point_idx != -1) {
+                points_associations.emplace_back(matches[i].trainIdx, \
+                                                current_3d_point_idx);
+            }
+        }
 
         // Predict the new pose (use previous pose as initial guess)
         cv::Mat predicted_pose = this->_poses[this->_poses.size()-1].clone();
-        perform_Posit(predicted_pose, this->_measurements, \
-                        meas2_idx, this->_landmark_observations, \
+        perform_Posit(predicted_pose, meas2, \
+                        points_associations, \
                         this->_landmarks, this->_K, \
-                        50, 1000, 5000, 1);
+                        posit_n_iters, \
+                        posit_kernel_threshold, \
+                        posit_threshold_to_ignore, \
+                        posit_damping_factor);
         
         // Add the new pose observed and use it as keyframe
         // TODO: determine if it must be used as keyframe or not
