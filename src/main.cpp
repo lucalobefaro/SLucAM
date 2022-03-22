@@ -69,7 +69,7 @@ int main() {
     // INITIALIZATION
     // -----------------------------------------------------------------------------
     cout << "INITIALIZATION ..." << endl;
-    if(!SLucAM::initialize(state, matcher, n_ransac_iters, rotation_only_threshold_rate)) {
+    if(!state.initializeState(matcher, n_ransac_iters, rotation_only_threshold_rate)) {
         cout << "ERROR: unable to perform initialization" << endl;
         return 1;
     }
@@ -80,7 +80,7 @@ int main() {
     // OPTIMIZE INITIALIZATION
     // -----------------------------------------------------------------------------
     cout << "OPTIMIZING INITIALIZATION ..." << endl;
-    if(state.noMoreMeasurements()) {
+    if(state.reaminingMeasurements() == 0) {
         cout << "ERROR: no more measurement to optimize initialization" << endl;
         return 1;
     }

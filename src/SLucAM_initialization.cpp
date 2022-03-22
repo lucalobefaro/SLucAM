@@ -8,6 +8,8 @@
 // -----------------------------------------------------------------------------
 #include <SLucAM_initialization.h>
 #include <SLucAM_geometry.h>
+#include <numeric>
+#include <algorithm>
 
 // TODO: delete this
 #include <iostream>
@@ -20,140 +22,143 @@ using namespace std;
 // -----------------------------------------------------------------------------
 namespace SLucAM {
 
-    /* 
-    * Function that performs SLAM initialization.
+    /*
+    * Function that, given two measurements, try to perform initialization, by
+    * computing the Foundamental Matrix and the Homography between the two 
+    * measurements. If a valid (not rotation only) transform between the two
+    * is found, it computes the pose of the second pose w.r.t. the first one
+    * and triangulates the points in common.
     * Inputs:
-    *   state: the state that contains all the measurements and where all the
-    *           infos about the current SLAM session are stored
-    *   ransac_iter: #iteration to perform in RANSAC
+    *   meas1/meas2: the measurements to use to perform initialization
+    *   matcher: tool to use to match the points between the measurements
+    *   K: camera matrix of the camera used to take the measurements
+    *   predicted_pose: the pose of the meas2 w.r.t. pose1
+    *   triangulated_points: all the points triangulated from the matches
+    *   ransac_iter
+    *   rotation_only_threshold_rate: threshold to understand if we have a 
+    *       rotation only
     * Outputs:
-    *   true if the initialization is correctly performed, false otherwise
+    *   false if the measures are not good to perform initialization
     */
-    bool initialize(State& state, \
+    bool initialize(const Measurement& meas1, \
+                    const Measurement& meas2, \
                     Matcher& matcher, \
+                    const cv::Mat& K, cv::Mat predicted_pose, \
+                    std::vector<cv::Point3f>& triangulated_points, \
+                    std::vector<std::pair<unsigned int, unsigned int>>& \
+                        meas1_points_associations, \
+                    std::vector<std::pair<unsigned int, unsigned int>>& \
+                        meas2_points_associations, \
                     const unsigned int& ransac_iter, \
                     const float& rotation_only_threshold_rate) {
         
-        // Initialization
-        const cv::Mat& K = state.getCameraMatrix();
-        const unsigned int n_measurements = state.getMeasurements().size();
-        bool initialization_performed = false;
-        float current_inliers_percentage;
+        // Match the two measurements
+        vector<cv::DMatch> matches;
+        matcher.match_measurements(meas1, meas2, matches);
+        unsigned int n_matches = matches.size();
 
-        // If we do not have enough measurements refuse initialization
-        if(n_measurements < 2) return false; 
-
-        // While a good initialization is performed, try it
-        for(unsigned int current_second_measure=1; \
-                current_second_measure<n_measurements; \
-                ++current_second_measure) {
-            
-            // Take the current measurements
-            const Measurement& meas1 = state.getMeasurements()[0];
-            const Measurement& meas2 = state.getMeasurements()[current_second_measure];
-
-            // Match the two measurements
-            vector<cv::DMatch> matches;
-            matcher.match_measurements(meas1, meas2, matches);
-
-            // Generate random sets of matches indices, one for iteration
-            // TODO: optimize this
-            std::vector<std::vector<unsigned int>> random_idxs(ransac_iter, std::vector<unsigned int>(8));
-            unsigned int n_matches = matches.size();
-            std::vector<unsigned int> indices(n_matches);
-            for(unsigned int i=0; i<n_matches; ++i) {
-                indices[i] = i;
-            }
-            srand(time(NULL));
-            for(unsigned int i=0; i<ransac_iter; ++i) {
-                std::random_shuffle(indices.begin(), indices.end(), [](int i) {return rand() % i;});
-                for(unsigned int j=0; j<8; ++j) {
-                    random_idxs[i][j] = indices[j];
-                }
-            }
-
-            // Perform RANSAC
-            // TODO: multi-thread here?
-            const std::vector<cv::KeyPoint>& p_img1 = meas1.getPoints();
-            const std::vector<cv::KeyPoint>& p_img1_normalized = meas1.getNormalizedPoints();
-            const std::vector<cv::KeyPoint>& p_img2 = meas2.getPoints();
-            const std::vector<cv::KeyPoint>& p_img2_normalized = meas2.getNormalizedPoints();
-            const cv::Mat& T1 = meas1.getTNorm();
-            const cv::Mat& T2 = meas2.getTNorm();
-
-            std::vector<bool> inliers_mask_F(n_matches);
-            std::vector<bool> inliers_mask_H(n_matches);
-            unsigned int n_inliers_F = SLucAM::ransac_foundamental(p_img1_normalized, \
-                                                                    p_img2_normalized, \
-                                                                    p_img1, \
-                                                                    p_img2, \
-                                                                    matches, \
-                                                                    T1, T2, \
-                                                                    random_idxs, \
-                                                                    inliers_mask_F, \
-                                                                    ransac_iter);
-            unsigned int n_inliers_H = SLucAM::ransac_homography(p_img1_normalized, \
-                                                                    p_img2_normalized, \
-                                                                    p_img1, \
-                                                                    p_img2, \
-                                                                    matches, \
-                                                                    T1, T2, \
-                                                                    random_idxs, \
-                                                                    inliers_mask_H, \
-                                                                    ransac_iter);
-
-            // Compute the "rotation_only_threshold_rate"% of inliers obtained with F
-            current_inliers_percentage = (rotation_only_threshold_rate*n_inliers_F)/100.0;
-
-            // If we have a rotation only case (or a close one) between 
-            // the two measurements, refuse the initialization between them and
-            // go with the next measurement couple (if any)
-            // The rotation only case is detected if the #inliers obtained with H is
-            // "near enough" the #inliers obtained with F (the neighborhood range
-            // is determined by rotation_only_threshold_rate)
-            if(n_inliers_H > (n_inliers_F-current_inliers_percentage)) {
-                cout << "ROTATION ONLY" << endl;    // TODO: delete this
-                continue;
-            }
-                
-            // From the inliers mask compute a vector of indices for matches
-            // TODO: inliers_mask_F ?
-            // TODO: optimize this ?
-            std::vector<unsigned int> matches_filter;
-            matches_filter.reserve(n_matches);
-            for(unsigned int i=0; i<n_matches; ++i) {
-                if(inliers_mask_F[i]) {
-                    matches_filter.emplace_back(i);
-                }
-            }
-            matches_filter.shrink_to_fit();
-
-            // Compute F on all inliers (its best version)
-            cv::Mat F;
-            estimate_foundamental(p_img1_normalized, p_img2_normalized, matches, matches_filter, F);
-            F = T1.t()*F*T2;    // Denormalization
-
-            // Compute pose of image2 w.r.t. image1 from F
-            cv::Mat X;
-            std::vector<cv::Point3f> triangulate_points;
-            extract_X_from_F(p_img1, p_img2, matches, matches_filter, \
-                                F, K, X, triangulate_points);
-
-            // Update state
-            state.initializeState(X, triangulate_points, p_img1, p_img2, \
-                                matches, matches_filter, \
-                                0, current_second_measure);
-            
-            // A good initialization is performed, so exit from the cycle
-            // and memorize the last analyzed measurement
-            initialization_performed = true;
-            state.setLastMeasurementIdx(current_second_measure);
-            break;
+        // Generate random sets of matches indices, one for iteration
+        std::vector<std::vector<unsigned int>> random_idxs(ransac_iter, std::vector<unsigned int>(8));
+        std::vector<unsigned int> indices(n_matches);
+        std::iota(indices.begin(), indices.end(), 0);
+        srand(time(NULL));
+        for(unsigned int i=0; i<ransac_iter; ++i) {
+            std::random_shuffle(indices.begin(), indices.end(), [](int i) {return rand() % i;});
+            random_idxs[i].assign(indices.begin(), indices.begin()+8);
         }
 
-        // If we are not able to find a couple of measurements valid for 
-        // initialization, return false, true otherwise
-        return initialization_performed;
+        // Perform RANSAC
+        const std::vector<cv::KeyPoint>& p_img1 = meas1.getPoints();
+        const std::vector<cv::KeyPoint>& p_img1_normalized = meas1.getNormalizedPoints();
+        const std::vector<cv::KeyPoint>& p_img2 = meas2.getPoints();
+        const std::vector<cv::KeyPoint>& p_img2_normalized = meas2.getNormalizedPoints();
+        const cv::Mat& T1 = meas1.getTNorm();
+        const cv::Mat& T2 = meas2.getTNorm();
+        std::vector<bool> inliers_mask_F(n_matches);
+        std::vector<bool> inliers_mask_H(n_matches);
+
+        unsigned int n_inliers_F = SLucAM::ransac_foundamental(p_img1_normalized, \
+                                                                p_img2_normalized, \
+                                                                p_img1, \
+                                                                p_img2, \
+                                                                matches, \
+                                                                T1, T2, \
+                                                                random_idxs, \
+                                                                inliers_mask_F, \
+                                                                ransac_iter);
+        unsigned int n_inliers_H = SLucAM::ransac_homography(p_img1_normalized, \
+                                                                p_img2_normalized, \
+                                                                p_img1, \
+                                                                p_img2, \
+                                                                matches, \
+                                                                T1, T2, \
+                                                                random_idxs, \
+                                                                inliers_mask_H, \
+                                                                ransac_iter);
+
+        // Compute the "rotation_only_threshold_rate"% of inliers obtained with F
+        float inliers_percentage = (rotation_only_threshold_rate*n_inliers_F)/100.0;
+
+        // If we have a rotation only case (or a close one) between 
+        // the two measurements, refuse the initialization
+        // The rotation only case is detected if the #inliers obtained with H is
+        // "near enough" the #inliers obtained with F (the neighborhood range
+        // is determined by rotation_only_threshold_rate)
+        if(n_inliers_H > (n_inliers_F-inliers_percentage)) {
+            cout << "ROTATION ONLY" << endl;    // TODO: delete this
+            return false;
+        }
+
+        // From the inliers mask compute a vector of indices for matches
+        // TODO: optimize this
+        std::vector<unsigned int> matches_filter;
+        matches_filter.reserve(n_matches);
+        for(unsigned int i=0; i<n_matches; ++i) {
+            if(inliers_mask_F[i]) {
+                matches_filter.emplace_back(i);
+            }
+        }
+        matches_filter.shrink_to_fit();
+
+        // Compute F on all inliers (its best version)
+        cv::Mat F;
+        estimate_foundamental(p_img1_normalized, p_img2_normalized, matches, matches_filter, F);
+        F = T1.t()*F*T2;    // Denormalization
+
+        // Compute pose of image2 w.r.t. image1 from F
+        std::vector<cv::Point3f> predicted_3d_points;
+        extract_X_from_F(p_img1, p_img2, matches, matches_filter, \
+                            F, K, predicted_pose, predicted_3d_points);
+        
+        // Initialize points associations
+        const unsigned int n_associations = matches_filter.size();
+        triangulated_points.reserve(n_associations);
+        meas1_points_associations.reserve(n_associations);
+        meas2_points_associations.reserve(n_associations);
+        unsigned int current_landmark_idx;
+        for(unsigned int i=0; i<n_associations; ++i) {
+            
+            // If the landmark is not triangulated in a good way
+            // ignore this association
+            if(predicted_3d_points[i].x == 0 && \
+                predicted_3d_points[i].y == 0 && \
+                predicted_3d_points[i].z == 0) {
+                continue;                   
+            }
+
+            triangulated_points.emplace_back(predicted_3d_points[i]);
+            current_landmark_idx = triangulated_points.size()-1;
+            meas1_points_associations.emplace_back(\
+                    matches[matches_filter[i]].queryIdx, current_landmark_idx);
+            meas2_points_associations.emplace_back(\
+                    matches[matches_filter[i]].trainIdx, current_landmark_idx);
+        }
+        triangulated_points.shrink_to_fit();
+        meas1_points_associations.shrink_to_fit();
+        meas2_points_associations.shrink_to_fit();
+        
+        return true;
+
     }
 
 } // namespace SLucAM

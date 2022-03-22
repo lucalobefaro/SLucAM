@@ -7,6 +7,7 @@
 // INCLUDES
 // -----------------------------------------------------------------------------
 #include <SLucAM_state.h>
+#include <SLucAM_initialization.h>
 #include <SLucAM_geometry.h>
 #include <Eigen/Core>
 #include <Eigen/Cholesky>
@@ -27,7 +28,6 @@ namespace SLucAM {
     * This constructor allows us to reserve some expected space for the vector
     * of poses and the vector of landmarks, just for optimization. It also need
     * the camera matrix K. It also create the matcher (default).
-    * TODO: do shrink to fit somewhere. 
     */
     State::State(cv::Mat& K, std::vector<Measurement>& measurements, \
                 const unsigned int expected_poses, \
@@ -37,71 +37,64 @@ namespace SLucAM {
         this->_measurements = measurements;
         this->_poses.reserve(expected_poses);
         this->_landmarks.reserve(expected_landmarks);
-        this->_last_measurement_idx = 0;
+        this->_keyframes.reserve(expected_poses);
+        this->_next_measurement_idx = 0;
 
     }
 
 
 
     /*
-    * This function initialize the state with two new poses, the landmarks
-    * vector with the new triangulated points and the associations vector.
-    * Inputs:
-    *   new_pose: pose_2 to add to the pose vector (the first is assumed 
-    *               at the origin)
-    *   new_landmarks: list of landmarks to add to the state
-    *   points1/points2: measured points in the initialization
-    *   matches: matches between points1 and points2
-    *   idxs: only the matches contained in this vector are considered during
-    *       triangulation, so for each element in the idxs vector we have 
-    *       a match in the matches vector from wich we can retrieve the points
-    *       indices observed in measure1_idx and measure2_idx and we have
-    *       the corresponding triangulated point in the new_landmarks vector
-    *   measure1_idx/measure2_idx: index in the measures vector where to find 
-    *       the points observed in points1/points2
+    * This function performs the initialization of the state. It try to 
+    * perform initialization between the measurement in position 0 of the 
+    * measurements vector and the first measurement that have enough translation
+    * between them. If no such measurement is found then is returned false.  
     */
-    void State::initializeState(cv::Mat& new_pose, \
-                                std::vector<cv::Point3f>& new_landmarks, \
-                                const std::vector<cv::KeyPoint>& points1, \
-                                const std::vector<cv::KeyPoint>& points2, \
-                                const std::vector<cv::DMatch>& matches, \
-                                const std::vector<unsigned int>& idxs, \
-                                const unsigned int& measure1_idx, \
-                                const unsigned int& measure2_idx) {
-        
+    bool State::initializeState(Matcher& matcher, \
+                                const unsigned int& ransac_iter, \
+                                const float& rotation_only_threshold_rate) {
+
+        // If we do not have enough measurements refuse initialization
+        if(this->_measurements.size() < 2) return false; 
+
         // Initialization
-        const unsigned int n_observations = idxs.size();
+        const cv::Mat& K = this->_K;
+        bool initialization_performed = false;
+        cv::Mat predicted_pose;
+        std::vector<cv::Point3f> triangulated_points;
+        std::vector<std::pair<unsigned int, unsigned int>> meas1_points_associations;
+        std::vector<std::pair<unsigned int, unsigned int>> meas2_points_associations;
 
-        // Add the first two poses
+        // Take the first measurement
+        const Measurement& meas1 = getNextMeasurement();
+
+        // While a good measurement couple is not found try to find it
+        while(!initialization_performed && (reaminingMeasurements() != 0)) {
+            const Measurement& meas2 = getNextMeasurement();
+            initialization_performed = initialize(meas1, meas2, matcher, \
+                        K, predicted_pose, triangulated_points, \
+                        meas1_points_associations, meas2_points_associations, \
+                        ransac_iter, rotation_only_threshold_rate);
+        }
+
+        // If we close the loop because we have no more measurements, return false
+        if(!initialization_performed) return false;
+
+        // Save the 3D points
+        this->_landmarks.assign(triangulated_points.begin(), triangulated_points.end());
+
+        // Create the first pose (we assume it at the origin) and use it as new keyframe
         this->_poses.emplace_back(cv::Mat::eye(4,4,CV_32F));
-        this->_poses.emplace_back(new_pose);
+        addKeyFrame(0, 0, meas1_points_associations, -1);
 
-        // Add the observation "first pose observes second pose"
-        this->_pose_observations.emplace_back(0,1);
-        this->_poses_measurements.emplace_back(\
-                    this->_poses[0].inv()*this->_poses[1]); // TODO: check if this has to be computed here, so constant or at each cycle of bundle adjustment
+        // Save the predicted pose and use it as new keyframe
+        this->_poses.emplace_back(predicted_pose);
+        addKeyFrame(this->_next_measurement_idx-1, 1, meas2_points_associations, 0);
 
-        // For each observation
-        for(unsigned int i=0; i<n_observations; ++i) {
+        return true;
 
-            // If the landmark is not triangulated in a good way
-            if(new_landmarks[i].x == 0 && \
-                new_landmarks[i].y == 0 && \
-                new_landmarks[i].z == 0) {
-                continue;                   // Ignore this association
-            }
-
-            this->_landmarks.emplace_back(new_landmarks[i]);
-
-            // Add the observation made from pose 1
-            this->_landmark_observations.emplace_back(0, this->_landmarks.size()-1, \
-                        measure1_idx, matches[idxs[i]].queryIdx);
-
-            // Add the same observation made from pose 2
-            this->_landmark_observations.emplace_back(1, this->_landmarks.size()-1, \
-                        measure2_idx, matches[idxs[i]].trainIdx);
-        } 
     }
+
 
 
     /*
@@ -213,6 +206,7 @@ namespace SLucAM {
     }
 
 
+
     /*
     * Implementation of the Bundle Adjustment optimization with Least-Squares
     * method.
@@ -236,7 +230,7 @@ namespace SLucAM {
         std::vector<float> chi_stats_projection(n_iterations, 0.0);
         std::vector<float> chi_stats_pose(n_iterations, 0.0);
         unsigned int n_landmarks = this->_landmarks.size();
-        unsigned int system_size = (6*this->_poses.size()) + (3*n_landmarks);
+        unsigned int system_size = (6*this->_keyframes.size()) + (3*n_landmarks);
         cv::Mat H, b;
         const cv::Mat DampingMatrix = \
                     cv::Mat::eye(system_size, system_size, CV_32F)*damping_factor;
@@ -292,6 +286,31 @@ namespace SLucAM {
         }
         
     }
+
+
+
+    /*
+    * This function simply allows to add a new keyframe.
+    * Setting observer_keyframe_idx to -1 means that we have no observer for
+    * this pose.
+    */
+    void State::addKeyFrame(const unsigned int& meas_idx, const unsigned int& pose_idx, \
+                            std::vector<std::pair<unsigned int, unsigned int>>& points_associations, \
+                            const unsigned int& observer_keyframe_idx) {
+        
+        // Initialization
+        const unsigned int n_points_meas = this->_measurements[meas_idx].getPoints().size();
+
+        // Add a new keyframe
+        this->_keyframes.emplace_back(meas_idx, pose_idx, points_associations, n_points_meas);
+
+        // Add the reference to the observer (if any)
+        if(observer_keyframe_idx != -1) {
+            this->_keyframes[observer_keyframe_idx].addKeyframeAssociation(this->_keyframes.size()-1);
+        }
+
+    }
+
 
 
     /*
@@ -356,7 +375,7 @@ namespace SLucAM {
                         const std::vector<cv::Mat>& poses, \
                         const std::vector<cv::Point3f>& landmarks, \
                         const std::vector<Measurement>& measurements, \
-                        const std::vector<LandmarkObservation>& associations, \
+                        const std::vector<Keyframe>& keyframes, \
                         const cv::Mat& K, \
                         cv::Mat& H, cv::Mat& b, \
                         float& chi_tot, \
@@ -369,269 +388,287 @@ namespace SLucAM {
         unsigned int n_inliers = 0;
         chi_tot = 0.0;
         float current_chi = 0.0;
-        const unsigned int n_measurements = associations.size();
+        const unsigned int n_keyframes = keyframes.size();
         const unsigned int n_poses = poses.size();
+        unsigned int current_n_observations;
         cv::Mat J_pose, J_landmark;
         cv::Mat error = cv::Mat::zeros(2,1,CV_32F);
 
-        // For each measurement
-        for(unsigned int i=0; i<n_measurements; ++i) {
+        // For each keyframe
+        for(unsigned int keyframe_idx=0; keyframe_idx<n_keyframes; ++keyframe_idx) {
 
-            // Get the index of the observer pose and the index of 
-            // the landmark observed
-            const unsigned int& pose_idx = associations[i].pose_idx;
-            const unsigned int& landmark_idx = associations[i].landmark_idx;
+            // Get some reference to the current keyframe
+            const Keyframe& current_keyframe = keyframes[keyframe_idx];
+            const std::vector<std::pair<unsigned int, unsigned int>>& current_observations = \
+                current_keyframe.getPointsAssociations();
+
+            // Compute how many associations we have for this keyframe
+            current_n_observations = current_observations.size();
+
+            // For each observation in the current keyframe
+            for(unsigned int observation_idx; observation_idx < current_n_observations; ++observation_idx) {
+                
+                // Get the reference to the current observation
+                const std::pair<unsigned int, unsigned int>& current_observation = \
+                    current_observations[observation_idx];
+
+                // Get the index of the observer pose and the index of 
+                // the landmark observed
+                const unsigned int& pose_idx = current_keyframe.getPoseIdx();
+                const unsigned int& point_idx = current_observation.first;
+                const unsigned int& landmark_idx = current_observation.second;
+                
+                // Get the elements of the measurement
+                const cv::Mat& current_pose = poses[pose_idx];
+                const cv::Point3f& current_landmark = landmarks[landmark_idx];
+                const cv::KeyPoint& current_measure = \
+                            measurements[current_keyframe.getMeasIdx()]\
+                            .getPoints()[point_idx];
+
+                // Compute error and Jacobian
+                if(!computeProjectionErrorAndJacobian(current_pose, current_landmark, \
+                            current_measure, K, J_pose, J_landmark, error, \
+                            img_rows, img_cols)) {
+                    continue;   // The measurement is not valid, so ignore it
+                }
+
+                // Compute the chi error
+                const float& error_1 = error.at<float>(0,0);
+                const float& error_2 = error.at<float>(1,0);
+                current_chi = (error_1*error_1) + (error_2*error_2);
+
+                // Robust kernel
+                if(current_chi > threshold_to_ignore)
+                    continue;
+                if(current_chi > kernel_threshold) {
+                    error = error*sqrt(kernel_threshold/current_chi);
+                    current_chi = kernel_threshold;
+                } else {
+                    ++n_inliers;
+                }
+
+                // Update the error evolution
+                chi_tot += current_chi;
+
+                // Some reference to jacobians
+                const float& J_pose_11 = J_pose.at<float>(0,0);
+                const float& J_pose_12 = J_pose.at<float>(0,1);
+                const float& J_pose_13 = J_pose.at<float>(0,2);
+                const float& J_pose_14 = J_pose.at<float>(0,3);
+                const float& J_pose_15 = J_pose.at<float>(0,4);
+                const float& J_pose_16 = J_pose.at<float>(0,5);
+                const float& J_pose_21 = J_pose.at<float>(1,0);
+                const float& J_pose_22 = J_pose.at<float>(1,1);
+                const float& J_pose_23 = J_pose.at<float>(1,2);
+                const float& J_pose_24 = J_pose.at<float>(1,3);
+                const float& J_pose_25 = J_pose.at<float>(1,4);
+                const float& J_pose_26 = J_pose.at<float>(1,5);
+                const float& J_landmark_11 = J_landmark.at<float>(0,0);
+                const float& J_landmark_12 = J_landmark.at<float>(0,1);
+                const float& J_landmark_13 = J_landmark.at<float>(0,2);
+                const float& J_landmark_21 = J_landmark.at<float>(1,0);
+                const float& J_landmark_22 = J_landmark.at<float>(1,1);
+                const float& J_landmark_23 = J_landmark.at<float>(1,2);
+
+                // Retrieve the indices in the matrix H and vector b
+                unsigned int pose_matrix_idx = poseMatrixIdx(pose_idx);
+                unsigned int landmark_matrix_idx = landmarkMatrixIdx(landmark_idx, n_poses);
+
+                // Update the H matrix
+                // J_pose.t()*J_pose
+                H.at<float>(pose_matrix_idx, pose_matrix_idx) += \
+                    J_pose_11*J_pose_11 + J_pose_21*J_pose_21;
+                H.at<float>(pose_matrix_idx, pose_matrix_idx+1) += \
+                    J_pose_11*J_pose_12 + J_pose_21*J_pose_22;
+                H.at<float>(pose_matrix_idx, pose_matrix_idx+2) += \
+                    J_pose_11*J_pose_13 + J_pose_21*J_pose_23;
+                H.at<float>(pose_matrix_idx, pose_matrix_idx+3) += \
+                    J_pose_11*J_pose_14 + J_pose_21*J_pose_24;
+                H.at<float>(pose_matrix_idx, pose_matrix_idx+4) += \
+                    J_pose_11*J_pose_15 + J_pose_21*J_pose_25;
+                H.at<float>(pose_matrix_idx, pose_matrix_idx+5) += \
+                    J_pose_11*J_pose_16 + J_pose_21*J_pose_26;
+                H.at<float>(pose_matrix_idx+1, pose_matrix_idx) += \
+                    J_pose_12*J_pose_11 + J_pose_22*J_pose_21;
+                H.at<float>(pose_matrix_idx+1, pose_matrix_idx+1) += \
+                    J_pose_12*J_pose_12 + J_pose_22*J_pose_22;
+                H.at<float>(pose_matrix_idx+1, pose_matrix_idx+2) += \
+                    J_pose_12*J_pose_13 + J_pose_22*J_pose_23;
+                H.at<float>(pose_matrix_idx+1, pose_matrix_idx+3) += \
+                    J_pose_12*J_pose_14 + J_pose_22*J_pose_24;
+                H.at<float>(pose_matrix_idx+1, pose_matrix_idx+4) += \
+                    J_pose_12*J_pose_15 + J_pose_22*J_pose_25;
+                H.at<float>(pose_matrix_idx+1, pose_matrix_idx+5) += \
+                    J_pose_12*J_pose_16 + J_pose_22*J_pose_26;
+                H.at<float>(pose_matrix_idx+2, pose_matrix_idx) += \
+                    J_pose_13*J_pose_11 + J_pose_23*J_pose_21;
+                H.at<float>(pose_matrix_idx+2, pose_matrix_idx+1) += \
+                    J_pose_13*J_pose_12 + J_pose_23*J_pose_22;
+                H.at<float>(pose_matrix_idx+2, pose_matrix_idx+2) += \
+                    J_pose_13*J_pose_13 + J_pose_23*J_pose_23;
+                H.at<float>(pose_matrix_idx+2, pose_matrix_idx+3) += \
+                    J_pose_13*J_pose_14 + J_pose_23*J_pose_24;
+                H.at<float>(pose_matrix_idx+2, pose_matrix_idx+4) += \
+                    J_pose_13*J_pose_15 + J_pose_23*J_pose_25;
+                H.at<float>(pose_matrix_idx+2, pose_matrix_idx+5) += \
+                    J_pose_13*J_pose_16 + J_pose_23*J_pose_26;
+                H.at<float>(pose_matrix_idx+3, pose_matrix_idx) += \
+                    J_pose_14*J_pose_11 + J_pose_24*J_pose_21;
+                H.at<float>(pose_matrix_idx+3, pose_matrix_idx+1) += \
+                    J_pose_14*J_pose_12 + J_pose_24*J_pose_22;
+                H.at<float>(pose_matrix_idx+3, pose_matrix_idx+2) += \
+                    J_pose_14*J_pose_13 + J_pose_24*J_pose_23;
+                H.at<float>(pose_matrix_idx+3, pose_matrix_idx+3) += \
+                    J_pose_14*J_pose_14 + J_pose_24*J_pose_24;
+                H.at<float>(pose_matrix_idx+3, pose_matrix_idx+4) += \
+                    J_pose_14*J_pose_15 + J_pose_24*J_pose_25;
+                H.at<float>(pose_matrix_idx+3, pose_matrix_idx+5) += \
+                    J_pose_14*J_pose_16 + J_pose_24*J_pose_26;
+                H.at<float>(pose_matrix_idx+4, pose_matrix_idx) += \
+                    J_pose_15*J_pose_11 + J_pose_25*J_pose_21;
+                H.at<float>(pose_matrix_idx+4, pose_matrix_idx+1) += \
+                    J_pose_15*J_pose_12 + J_pose_25*J_pose_22;
+                H.at<float>(pose_matrix_idx+4, pose_matrix_idx+2) += \
+                    J_pose_15*J_pose_13 + J_pose_25*J_pose_23;
+                H.at<float>(pose_matrix_idx+4, pose_matrix_idx+3) += \
+                    J_pose_15*J_pose_14 + J_pose_25*J_pose_24;
+                H.at<float>(pose_matrix_idx+4, pose_matrix_idx+4) += \
+                    J_pose_15*J_pose_15 + J_pose_25*J_pose_25;
+                H.at<float>(pose_matrix_idx+4, pose_matrix_idx+5) += \
+                    J_pose_15*J_pose_16 + J_pose_25*J_pose_26;
+                H.at<float>(pose_matrix_idx+5, pose_matrix_idx) += \
+                    J_pose_16*J_pose_11 + J_pose_26*J_pose_21;
+                H.at<float>(pose_matrix_idx+5, pose_matrix_idx+1) += \
+                    J_pose_16*J_pose_12 + J_pose_26*J_pose_22;
+                H.at<float>(pose_matrix_idx+5, pose_matrix_idx+2) += \
+                    J_pose_16*J_pose_13 + J_pose_26*J_pose_23;
+                H.at<float>(pose_matrix_idx+5, pose_matrix_idx+3) += \
+                    J_pose_16*J_pose_14 + J_pose_26*J_pose_24;
+                H.at<float>(pose_matrix_idx+5, pose_matrix_idx+4) += \
+                    J_pose_16*J_pose_15 + J_pose_26*J_pose_25;
+                H.at<float>(pose_matrix_idx+5, pose_matrix_idx+5) += \
+                    J_pose_16*J_pose_16 + J_pose_26*J_pose_26;
+                
+                // J_pose.t()*J_landmark
+                H.at<float>(pose_matrix_idx, landmark_matrix_idx) += \
+                    J_pose_11*J_landmark_11 + J_pose_21*J_landmark_21;
+                H.at<float>(pose_matrix_idx, landmark_matrix_idx+1) += \
+                    J_pose_11*J_landmark_12 + J_pose_21*J_landmark_22;
+                H.at<float>(pose_matrix_idx, landmark_matrix_idx+2) += \
+                    J_pose_11*J_landmark_13 + J_pose_21*J_landmark_23;  
+                H.at<float>(pose_matrix_idx+1, landmark_matrix_idx) += \
+                    J_pose_12*J_landmark_11 + J_pose_22*J_landmark_21;
+                H.at<float>(pose_matrix_idx+1, landmark_matrix_idx+1) += \
+                    J_pose_12*J_landmark_12 + J_pose_22*J_landmark_22;
+                H.at<float>(pose_matrix_idx+1, landmark_matrix_idx+2) += \
+                    J_pose_12*J_landmark_13 + J_pose_22*J_landmark_23;
+                H.at<float>(pose_matrix_idx+2, landmark_matrix_idx) += \
+                    J_pose_13*J_landmark_11 + J_pose_23*J_landmark_21;
+                H.at<float>(pose_matrix_idx+2, landmark_matrix_idx+1) += \
+                    J_pose_13*J_landmark_12 + J_pose_23*J_landmark_22;
+                H.at<float>(pose_matrix_idx+2, landmark_matrix_idx+2) += \
+                    J_pose_13*J_landmark_13 + J_pose_23*J_landmark_23;
+                H.at<float>(pose_matrix_idx+3, landmark_matrix_idx) += \
+                    J_pose_14*J_landmark_11 + J_pose_24*J_landmark_21;
+                H.at<float>(pose_matrix_idx+3, landmark_matrix_idx+1) += \
+                    J_pose_14*J_landmark_12 + J_pose_24*J_landmark_22;
+                H.at<float>(pose_matrix_idx+3, landmark_matrix_idx+2) += \
+                    J_pose_14*J_landmark_13 + J_pose_24*J_landmark_23;
+                H.at<float>(pose_matrix_idx+4, landmark_matrix_idx) += \
+                    J_pose_15*J_landmark_11 + J_pose_25*J_landmark_21;
+                H.at<float>(pose_matrix_idx+4, landmark_matrix_idx+1) += \
+                    J_pose_15*J_landmark_12 + J_pose_25*J_landmark_22;
+                H.at<float>(pose_matrix_idx+4, landmark_matrix_idx+2) += \
+                    J_pose_15*J_landmark_13 + J_pose_25*J_landmark_23;
+                H.at<float>(pose_matrix_idx+5, landmark_matrix_idx) += \
+                    J_pose_16*J_landmark_11 + J_pose_26*J_landmark_21;
+                H.at<float>(pose_matrix_idx+5, landmark_matrix_idx+1) += \
+                    J_pose_16*J_landmark_12 + J_pose_26*J_landmark_22;
+                H.at<float>(pose_matrix_idx+5, landmark_matrix_idx+2) += \
+                    J_pose_16*J_landmark_13 + J_pose_26*J_landmark_23;
+                
+                // J_landmark.t()*J_landmark
+                H.at<float>(landmark_matrix_idx, landmark_matrix_idx) += \
+                    J_landmark_11*J_landmark_11 + J_landmark_21*J_landmark_21;
+                H.at<float>(landmark_matrix_idx, landmark_matrix_idx+1) += \
+                    J_landmark_11*J_landmark_12 + J_landmark_21*J_landmark_22;
+                H.at<float>(landmark_matrix_idx, landmark_matrix_idx+2) += \
+                    J_landmark_11*J_landmark_13 + J_landmark_21*J_landmark_23;
+                H.at<float>(landmark_matrix_idx+1, landmark_matrix_idx) += \
+                    J_landmark_12*J_landmark_11 + J_landmark_22*J_landmark_21;
+                H.at<float>(landmark_matrix_idx+1, landmark_matrix_idx+1) += \
+                    J_landmark_12*J_landmark_12 + J_landmark_22*J_landmark_22;
+                H.at<float>(landmark_matrix_idx+1, landmark_matrix_idx+2) += \
+                    J_landmark_12*J_landmark_13 + J_landmark_22*J_landmark_23;
+                H.at<float>(landmark_matrix_idx+2, landmark_matrix_idx) += \
+                    J_landmark_13*J_landmark_11 + J_landmark_23*J_landmark_21;
+                H.at<float>(landmark_matrix_idx+2, landmark_matrix_idx+1) += \
+                    J_landmark_13*J_landmark_12 + J_landmark_23*J_landmark_22;
+                H.at<float>(landmark_matrix_idx+2, landmark_matrix_idx+2) += \
+                    J_landmark_13*J_landmark_13 + J_landmark_23*J_landmark_23;
+
+                // J_landmark.t()*J_pose
+                H.at<float>(landmark_matrix_idx, pose_matrix_idx) += \
+                    J_landmark_11*J_pose_11 + J_landmark_21*J_pose_21;
+                H.at<float>(landmark_matrix_idx, pose_matrix_idx+1) += \
+                    J_landmark_11*J_pose_12 + J_landmark_21*J_pose_22;
+                H.at<float>(landmark_matrix_idx, pose_matrix_idx+2) += \
+                    J_landmark_11*J_pose_13 + J_landmark_21*J_pose_23;
+                H.at<float>(landmark_matrix_idx, pose_matrix_idx+3) += \
+                    J_landmark_11*J_pose_14 + J_landmark_21*J_pose_24;
+                H.at<float>(landmark_matrix_idx, pose_matrix_idx+4) += \
+                    J_landmark_11*J_pose_15 + J_landmark_21*J_pose_25;
+                H.at<float>(landmark_matrix_idx, pose_matrix_idx+5) += \
+                    J_landmark_11*J_pose_16 + J_landmark_21*J_pose_26;
+                H.at<float>(landmark_matrix_idx+1, pose_matrix_idx) += \
+                    J_landmark_12*J_pose_11 + J_landmark_22*J_pose_21;
+                H.at<float>(landmark_matrix_idx+1, pose_matrix_idx+1) += \
+                    J_landmark_12*J_pose_12 + J_landmark_22*J_pose_22;
+                H.at<float>(landmark_matrix_idx+1, pose_matrix_idx+2) += \
+                    J_landmark_12*J_pose_13 + J_landmark_22*J_pose_23;
+                H.at<float>(landmark_matrix_idx+1, pose_matrix_idx+3) += \
+                    J_landmark_12*J_pose_14 + J_landmark_22*J_pose_24;
+                H.at<float>(landmark_matrix_idx+1, pose_matrix_idx+4) += \
+                    J_landmark_12*J_pose_15 + J_landmark_22*J_pose_25;
+                H.at<float>(landmark_matrix_idx+1, pose_matrix_idx+5) += \
+                    J_landmark_12*J_pose_16 + J_landmark_22*J_pose_26;
+                H.at<float>(landmark_matrix_idx+2, pose_matrix_idx) += \
+                    J_landmark_13*J_pose_11 + J_landmark_23*J_pose_21;
+                H.at<float>(landmark_matrix_idx+2, pose_matrix_idx+1) += \
+                    J_landmark_13*J_pose_12 + J_landmark_23*J_pose_22;
+                H.at<float>(landmark_matrix_idx+2, pose_matrix_idx+2) += \
+                    J_landmark_13*J_pose_13 + J_landmark_23*J_pose_23;
+                H.at<float>(landmark_matrix_idx+2, pose_matrix_idx+3) += \
+                    J_landmark_13*J_pose_14 + J_landmark_23*J_pose_24;
+                H.at<float>(landmark_matrix_idx+2, pose_matrix_idx+4) += \
+                    J_landmark_13*J_pose_15 + J_landmark_23*J_pose_25;
+                H.at<float>(landmark_matrix_idx+2, pose_matrix_idx+5) += \
+                    J_landmark_13*J_pose_16 + J_landmark_23*J_pose_26;
+
+                // Update the b vector
+                // J_pose.t()*error
+                b.at<float>(pose_matrix_idx, 0) += \
+                    J_pose_11*error_1 + J_pose_21*error_2; 
+                b.at<float>(pose_matrix_idx+1, 0) += \
+                    J_pose_12*error_1 + J_pose_22*error_2;
+                b.at<float>(pose_matrix_idx+2, 0) += \
+                    J_pose_13*error_1 + J_pose_23*error_2;
+                b.at<float>(pose_matrix_idx+3, 0) += \
+                    J_pose_14*error_1 + J_pose_24*error_2;
+                b.at<float>(pose_matrix_idx+4, 0) += \
+                    J_pose_15*error_1 + J_pose_25*error_2;
+                b.at<float>(pose_matrix_idx+5, 0) += \
+                    J_pose_16*error_1 + J_pose_26*error_2;
+
+                // J_landmark.t()*error
+                b.at<float>(landmark_matrix_idx, 0) += \
+                    J_landmark_11*error_1 + J_landmark_21*error_2;
+                b.at<float>(landmark_matrix_idx+1, 0) += \
+                    J_landmark_12*error_1 + J_landmark_22*error_2;
+                b.at<float>(landmark_matrix_idx+2, 0) += \
+                    J_landmark_13*error_1 + J_landmark_23*error_2;
             
-            // Get the elements of the measurement
-            const cv::Mat& current_pose = poses[pose_idx];
-            const cv::Point3f& current_landmark = landmarks[landmark_idx];
-            const cv::KeyPoint& current_measure = \
-                        measurements[associations[i].measurement_idx]\
-                        .getPoints()[associations[i].point_idx];
-
-            // Compute error and Jacobian
-            if(!computeProjectionErrorAndJacobian(current_pose, current_landmark, \
-                        current_measure, K, J_pose, J_landmark, error, \
-                        img_rows, img_cols)) {
-                continue;   // The measurement is not valid, so ignore it
             }
-
-            // Compute the chi error
-            const float& error_1 = error.at<float>(0,0);
-            const float& error_2 = error.at<float>(1,0);
-            current_chi = (error_1*error_1) + (error_2*error_2);
-
-            // Robust kernel
-            if(current_chi > threshold_to_ignore)
-                continue;
-            if(current_chi > kernel_threshold) {
-                error = error*sqrt(kernel_threshold/current_chi);
-                current_chi = kernel_threshold;
-            } else {
-                ++n_inliers;
-            }
-
-            // Update the error evolution
-            chi_tot += current_chi;
-
-            // Some reference to jacobians
-            const float& J_pose_11 = J_pose.at<float>(0,0);
-            const float& J_pose_12 = J_pose.at<float>(0,1);
-            const float& J_pose_13 = J_pose.at<float>(0,2);
-            const float& J_pose_14 = J_pose.at<float>(0,3);
-            const float& J_pose_15 = J_pose.at<float>(0,4);
-            const float& J_pose_16 = J_pose.at<float>(0,5);
-            const float& J_pose_21 = J_pose.at<float>(1,0);
-            const float& J_pose_22 = J_pose.at<float>(1,1);
-            const float& J_pose_23 = J_pose.at<float>(1,2);
-            const float& J_pose_24 = J_pose.at<float>(1,3);
-            const float& J_pose_25 = J_pose.at<float>(1,4);
-            const float& J_pose_26 = J_pose.at<float>(1,5);
-            const float& J_landmark_11 = J_landmark.at<float>(0,0);
-            const float& J_landmark_12 = J_landmark.at<float>(0,1);
-            const float& J_landmark_13 = J_landmark.at<float>(0,2);
-            const float& J_landmark_21 = J_landmark.at<float>(1,0);
-            const float& J_landmark_22 = J_landmark.at<float>(1,1);
-            const float& J_landmark_23 = J_landmark.at<float>(1,2);
-
-            // Retrieve the indices in the matrix H and vector b
-            unsigned int pose_matrix_idx = poseMatrixIdx(pose_idx);
-            unsigned int landmark_matrix_idx = landmarkMatrixIdx(landmark_idx, n_poses);
-
-            // Update the H matrix
-            // J_pose.t()*J_pose
-            H.at<float>(pose_matrix_idx, pose_matrix_idx) += \
-                J_pose_11*J_pose_11 + J_pose_21*J_pose_21;
-            H.at<float>(pose_matrix_idx, pose_matrix_idx+1) += \
-                J_pose_11*J_pose_12 + J_pose_21*J_pose_22;
-            H.at<float>(pose_matrix_idx, pose_matrix_idx+2) += \
-                J_pose_11*J_pose_13 + J_pose_21*J_pose_23;
-            H.at<float>(pose_matrix_idx, pose_matrix_idx+3) += \
-                J_pose_11*J_pose_14 + J_pose_21*J_pose_24;
-            H.at<float>(pose_matrix_idx, pose_matrix_idx+4) += \
-                J_pose_11*J_pose_15 + J_pose_21*J_pose_25;
-            H.at<float>(pose_matrix_idx, pose_matrix_idx+5) += \
-                J_pose_11*J_pose_16 + J_pose_21*J_pose_26;
-            H.at<float>(pose_matrix_idx+1, pose_matrix_idx) += \
-                J_pose_12*J_pose_11 + J_pose_22*J_pose_21;
-            H.at<float>(pose_matrix_idx+1, pose_matrix_idx+1) += \
-                J_pose_12*J_pose_12 + J_pose_22*J_pose_22;
-            H.at<float>(pose_matrix_idx+1, pose_matrix_idx+2) += \
-                J_pose_12*J_pose_13 + J_pose_22*J_pose_23;
-            H.at<float>(pose_matrix_idx+1, pose_matrix_idx+3) += \
-                J_pose_12*J_pose_14 + J_pose_22*J_pose_24;
-            H.at<float>(pose_matrix_idx+1, pose_matrix_idx+4) += \
-                J_pose_12*J_pose_15 + J_pose_22*J_pose_25;
-            H.at<float>(pose_matrix_idx+1, pose_matrix_idx+5) += \
-                J_pose_12*J_pose_16 + J_pose_22*J_pose_26;
-            H.at<float>(pose_matrix_idx+2, pose_matrix_idx) += \
-                J_pose_13*J_pose_11 + J_pose_23*J_pose_21;
-            H.at<float>(pose_matrix_idx+2, pose_matrix_idx+1) += \
-                J_pose_13*J_pose_12 + J_pose_23*J_pose_22;
-            H.at<float>(pose_matrix_idx+2, pose_matrix_idx+2) += \
-                J_pose_13*J_pose_13 + J_pose_23*J_pose_23;
-            H.at<float>(pose_matrix_idx+2, pose_matrix_idx+3) += \
-                J_pose_13*J_pose_14 + J_pose_23*J_pose_24;
-            H.at<float>(pose_matrix_idx+2, pose_matrix_idx+4) += \
-                J_pose_13*J_pose_15 + J_pose_23*J_pose_25;
-            H.at<float>(pose_matrix_idx+2, pose_matrix_idx+5) += \
-                J_pose_13*J_pose_16 + J_pose_23*J_pose_26;
-            H.at<float>(pose_matrix_idx+3, pose_matrix_idx) += \
-                J_pose_14*J_pose_11 + J_pose_24*J_pose_21;
-            H.at<float>(pose_matrix_idx+3, pose_matrix_idx+1) += \
-                J_pose_14*J_pose_12 + J_pose_24*J_pose_22;
-            H.at<float>(pose_matrix_idx+3, pose_matrix_idx+2) += \
-                J_pose_14*J_pose_13 + J_pose_24*J_pose_23;
-            H.at<float>(pose_matrix_idx+3, pose_matrix_idx+3) += \
-                J_pose_14*J_pose_14 + J_pose_24*J_pose_24;
-            H.at<float>(pose_matrix_idx+3, pose_matrix_idx+4) += \
-                J_pose_14*J_pose_15 + J_pose_24*J_pose_25;
-            H.at<float>(pose_matrix_idx+3, pose_matrix_idx+5) += \
-                J_pose_14*J_pose_16 + J_pose_24*J_pose_26;
-            H.at<float>(pose_matrix_idx+4, pose_matrix_idx) += \
-                J_pose_15*J_pose_11 + J_pose_25*J_pose_21;
-            H.at<float>(pose_matrix_idx+4, pose_matrix_idx+1) += \
-                J_pose_15*J_pose_12 + J_pose_25*J_pose_22;
-            H.at<float>(pose_matrix_idx+4, pose_matrix_idx+2) += \
-                J_pose_15*J_pose_13 + J_pose_25*J_pose_23;
-            H.at<float>(pose_matrix_idx+4, pose_matrix_idx+3) += \
-                J_pose_15*J_pose_14 + J_pose_25*J_pose_24;
-            H.at<float>(pose_matrix_idx+4, pose_matrix_idx+4) += \
-                J_pose_15*J_pose_15 + J_pose_25*J_pose_25;
-            H.at<float>(pose_matrix_idx+4, pose_matrix_idx+5) += \
-                J_pose_15*J_pose_16 + J_pose_25*J_pose_26;
-            H.at<float>(pose_matrix_idx+5, pose_matrix_idx) += \
-                J_pose_16*J_pose_11 + J_pose_26*J_pose_21;
-            H.at<float>(pose_matrix_idx+5, pose_matrix_idx+1) += \
-                J_pose_16*J_pose_12 + J_pose_26*J_pose_22;
-            H.at<float>(pose_matrix_idx+5, pose_matrix_idx+2) += \
-                J_pose_16*J_pose_13 + J_pose_26*J_pose_23;
-            H.at<float>(pose_matrix_idx+5, pose_matrix_idx+3) += \
-                J_pose_16*J_pose_14 + J_pose_26*J_pose_24;
-            H.at<float>(pose_matrix_idx+5, pose_matrix_idx+4) += \
-                J_pose_16*J_pose_15 + J_pose_26*J_pose_25;
-            H.at<float>(pose_matrix_idx+5, pose_matrix_idx+5) += \
-                J_pose_16*J_pose_16 + J_pose_26*J_pose_26;
-            
-            // J_pose.t()*J_landmark
-            H.at<float>(pose_matrix_idx, landmark_matrix_idx) += \
-                J_pose_11*J_landmark_11 + J_pose_21*J_landmark_21;
-            H.at<float>(pose_matrix_idx, landmark_matrix_idx+1) += \
-                J_pose_11*J_landmark_12 + J_pose_21*J_landmark_22;
-            H.at<float>(pose_matrix_idx, landmark_matrix_idx+2) += \
-                J_pose_11*J_landmark_13 + J_pose_21*J_landmark_23;  
-            H.at<float>(pose_matrix_idx+1, landmark_matrix_idx) += \
-                J_pose_12*J_landmark_11 + J_pose_22*J_landmark_21;
-            H.at<float>(pose_matrix_idx+1, landmark_matrix_idx+1) += \
-                J_pose_12*J_landmark_12 + J_pose_22*J_landmark_22;
-            H.at<float>(pose_matrix_idx+1, landmark_matrix_idx+2) += \
-                J_pose_12*J_landmark_13 + J_pose_22*J_landmark_23;
-            H.at<float>(pose_matrix_idx+2, landmark_matrix_idx) += \
-                J_pose_13*J_landmark_11 + J_pose_23*J_landmark_21;
-            H.at<float>(pose_matrix_idx+2, landmark_matrix_idx+1) += \
-                J_pose_13*J_landmark_12 + J_pose_23*J_landmark_22;
-            H.at<float>(pose_matrix_idx+2, landmark_matrix_idx+2) += \
-                J_pose_13*J_landmark_13 + J_pose_23*J_landmark_23;
-            H.at<float>(pose_matrix_idx+3, landmark_matrix_idx) += \
-                J_pose_14*J_landmark_11 + J_pose_24*J_landmark_21;
-            H.at<float>(pose_matrix_idx+3, landmark_matrix_idx+1) += \
-                J_pose_14*J_landmark_12 + J_pose_24*J_landmark_22;
-            H.at<float>(pose_matrix_idx+3, landmark_matrix_idx+2) += \
-                J_pose_14*J_landmark_13 + J_pose_24*J_landmark_23;
-            H.at<float>(pose_matrix_idx+4, landmark_matrix_idx) += \
-                J_pose_15*J_landmark_11 + J_pose_25*J_landmark_21;
-            H.at<float>(pose_matrix_idx+4, landmark_matrix_idx+1) += \
-                J_pose_15*J_landmark_12 + J_pose_25*J_landmark_22;
-            H.at<float>(pose_matrix_idx+4, landmark_matrix_idx+2) += \
-                J_pose_15*J_landmark_13 + J_pose_25*J_landmark_23;
-            H.at<float>(pose_matrix_idx+5, landmark_matrix_idx) += \
-                J_pose_16*J_landmark_11 + J_pose_26*J_landmark_21;
-            H.at<float>(pose_matrix_idx+5, landmark_matrix_idx+1) += \
-                J_pose_16*J_landmark_12 + J_pose_26*J_landmark_22;
-            H.at<float>(pose_matrix_idx+5, landmark_matrix_idx+2) += \
-                J_pose_16*J_landmark_13 + J_pose_26*J_landmark_23;
-            
-            // J_landmark.t()*J_landmark
-            H.at<float>(landmark_matrix_idx, landmark_matrix_idx) += \
-                J_landmark_11*J_landmark_11 + J_landmark_21*J_landmark_21;
-            H.at<float>(landmark_matrix_idx, landmark_matrix_idx+1) += \
-                J_landmark_11*J_landmark_12 + J_landmark_21*J_landmark_22;
-            H.at<float>(landmark_matrix_idx, landmark_matrix_idx+2) += \
-                J_landmark_11*J_landmark_13 + J_landmark_21*J_landmark_23;
-            H.at<float>(landmark_matrix_idx+1, landmark_matrix_idx) += \
-                J_landmark_12*J_landmark_11 + J_landmark_22*J_landmark_21;
-            H.at<float>(landmark_matrix_idx+1, landmark_matrix_idx+1) += \
-                J_landmark_12*J_landmark_12 + J_landmark_22*J_landmark_22;
-            H.at<float>(landmark_matrix_idx+1, landmark_matrix_idx+2) += \
-                J_landmark_12*J_landmark_13 + J_landmark_22*J_landmark_23;
-            H.at<float>(landmark_matrix_idx+2, landmark_matrix_idx) += \
-                J_landmark_13*J_landmark_11 + J_landmark_23*J_landmark_21;
-            H.at<float>(landmark_matrix_idx+2, landmark_matrix_idx+1) += \
-                J_landmark_13*J_landmark_12 + J_landmark_23*J_landmark_22;
-            H.at<float>(landmark_matrix_idx+2, landmark_matrix_idx+2) += \
-                J_landmark_13*J_landmark_13 + J_landmark_23*J_landmark_23;
-
-            // J_landmark.t()*J_pose
-            H.at<float>(landmark_matrix_idx, pose_matrix_idx) += \
-                J_landmark_11*J_pose_11 + J_landmark_21*J_pose_21;
-            H.at<float>(landmark_matrix_idx, pose_matrix_idx+1) += \
-                J_landmark_11*J_pose_12 + J_landmark_21*J_pose_22;
-            H.at<float>(landmark_matrix_idx, pose_matrix_idx+2) += \
-                J_landmark_11*J_pose_13 + J_landmark_21*J_pose_23;
-            H.at<float>(landmark_matrix_idx, pose_matrix_idx+3) += \
-                J_landmark_11*J_pose_14 + J_landmark_21*J_pose_24;
-            H.at<float>(landmark_matrix_idx, pose_matrix_idx+4) += \
-                J_landmark_11*J_pose_15 + J_landmark_21*J_pose_25;
-            H.at<float>(landmark_matrix_idx, pose_matrix_idx+5) += \
-                J_landmark_11*J_pose_16 + J_landmark_21*J_pose_26;
-            H.at<float>(landmark_matrix_idx+1, pose_matrix_idx) += \
-                J_landmark_12*J_pose_11 + J_landmark_22*J_pose_21;
-            H.at<float>(landmark_matrix_idx+1, pose_matrix_idx+1) += \
-                J_landmark_12*J_pose_12 + J_landmark_22*J_pose_22;
-            H.at<float>(landmark_matrix_idx+1, pose_matrix_idx+2) += \
-                J_landmark_12*J_pose_13 + J_landmark_22*J_pose_23;
-            H.at<float>(landmark_matrix_idx+1, pose_matrix_idx+3) += \
-                J_landmark_12*J_pose_14 + J_landmark_22*J_pose_24;
-            H.at<float>(landmark_matrix_idx+1, pose_matrix_idx+4) += \
-                J_landmark_12*J_pose_15 + J_landmark_22*J_pose_25;
-            H.at<float>(landmark_matrix_idx+1, pose_matrix_idx+5) += \
-                J_landmark_12*J_pose_16 + J_landmark_22*J_pose_26;
-            H.at<float>(landmark_matrix_idx+2, pose_matrix_idx) += \
-                J_landmark_13*J_pose_11 + J_landmark_23*J_pose_21;
-            H.at<float>(landmark_matrix_idx+2, pose_matrix_idx+1) += \
-                J_landmark_13*J_pose_12 + J_landmark_23*J_pose_22;
-            H.at<float>(landmark_matrix_idx+2, pose_matrix_idx+2) += \
-                J_landmark_13*J_pose_13 + J_landmark_23*J_pose_23;
-            H.at<float>(landmark_matrix_idx+2, pose_matrix_idx+3) += \
-                J_landmark_13*J_pose_14 + J_landmark_23*J_pose_24;
-            H.at<float>(landmark_matrix_idx+2, pose_matrix_idx+4) += \
-                J_landmark_13*J_pose_15 + J_landmark_23*J_pose_25;
-            H.at<float>(landmark_matrix_idx+2, pose_matrix_idx+5) += \
-                J_landmark_13*J_pose_16 + J_landmark_23*J_pose_26;
-
-            // Update the b vector
-            // J_pose.t()*error
-            b.at<float>(pose_matrix_idx, 0) += \
-                J_pose_11*error_1 + J_pose_21*error_2; 
-            b.at<float>(pose_matrix_idx+1, 0) += \
-                J_pose_12*error_1 + J_pose_22*error_2;
-            b.at<float>(pose_matrix_idx+2, 0) += \
-                J_pose_13*error_1 + J_pose_23*error_2;
-            b.at<float>(pose_matrix_idx+3, 0) += \
-                J_pose_14*error_1 + J_pose_24*error_2;
-            b.at<float>(pose_matrix_idx+4, 0) += \
-                J_pose_15*error_1 + J_pose_25*error_2;
-            b.at<float>(pose_matrix_idx+5, 0) += \
-                J_pose_16*error_1 + J_pose_26*error_2;
-
-            // J_landmark.t()*error
-            b.at<float>(landmark_matrix_idx, 0) += \
-                J_landmark_11*error_1 + J_landmark_21*error_2;
-            b.at<float>(landmark_matrix_idx+1, 0) += \
-                J_landmark_12*error_1 + J_landmark_22*error_2;
-            b.at<float>(landmark_matrix_idx+2, 0) += \
-                J_landmark_13*error_1 + J_landmark_23*error_2;
-
         }
 
         return n_inliers;        

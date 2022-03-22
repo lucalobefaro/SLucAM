@@ -15,56 +15,71 @@
 #include <opencv2/features2d.hpp>
 #include <SLucAM_measurement.h>
 #include <SLucAM_matcher.h>
+#include <map>
 
 
 
 // -----------------------------------------------------------------------------
-// Observations structs
+// Keyframe class
 // -----------------------------------------------------------------------------
 namespace SLucAM {
     
     /*
-    * This struct is useful to keep note of each observation pose->landmark, 
-    * by memorizing:
-    *   pose_idx: the observer pose
-    *   landmark_idx: the believed position of the landmark observed
-    *   measurement_idx: the measure where we take this observation
-    *   point_idx: the point which this observation refers to, in the given
-    *               measurement
+    * This class take note of each KeyFrame in the state. Basically it contains
+    * informations about:
+    *   - which measurement in the state is the measurement from which
+    *       this keyframe is taken
+    *   - which pose in the state is the predicted pose for this keyframe
+    *   - a vector of Map <point_idx, landmark_idx> that associates at each point
+    *       in the measurement to which this keyframe refers, the 3D 
+    *       predicted landmark in the state
+    *   - a vector that contains all the keyframe(poses) that the current Keyframe 
+    *       observes
     */
-    struct LandmarkObservation {
-        const unsigned int pose_idx;
-        const unsigned int landmark_idx;
-        const unsigned int measurement_idx;
-        const unsigned int point_idx;
+    class Keyframe {
 
-        LandmarkObservation(const unsigned int p_idx, \
-                    const unsigned int l_idx, \
-                    const unsigned int m_idx, \
-                    const unsigned int pnt_idx)
-            : pose_idx(p_idx)
-            , landmark_idx(l_idx)
-            , measurement_idx(m_idx)
-            , point_idx(pnt_idx)
-        {}
-    };
+    public:
 
+        Keyframe(const unsigned int& meas_idx, \
+                const unsigned int& pose_idx, \
+                std::vector<std::pair<unsigned int, unsigned int>>& points_associations, \
+                const unsigned int& n_points_meas) {
+            this->_meas_idx = meas_idx;
+            this->_pose_idx = pose_idx;
+            this->_points_associations = points_associations;
+            this->_points_associations.reserve(n_points_meas);
+        }
 
-    /*
-    * This struct is useful to keep note of each observation pose->pose, 
-    * by memorizing:
-    *   observer_pose_idx: the observer pose
-    *   measured_pose_idx: the observed pose
-    */
-    struct PoseObservation {
-        const unsigned int observer_pose_idx;
-        const unsigned int measured_pose_idx;
+        void addPointAssociation(const unsigned int& point_idx, \
+                                const unsigned int& landmark_idx){
+            this->_points_associations.emplace_back(point_idx, landmark_idx);
+        }
 
-        PoseObservation(const unsigned int observer_pose_idx, \
-                        const unsigned int measured_pose_idx)
-            : observer_pose_idx(observer_pose_idx)
-            , measured_pose_idx(measured_pose_idx)
-        {}
+        void addKeyframeAssociation(const unsigned int& pose_idx){
+            this->_keyframes_associations.emplace_back(pose_idx);
+        }
+
+        const unsigned int& getPoseIdx() const {return this->_pose_idx;}
+
+        const unsigned int& getMeasIdx() const {return this->_meas_idx;}
+
+        const std::vector<std::pair<unsigned int, unsigned int>>& \
+                    getPointsAssociations() const {
+            return this->_points_associations;
+        }
+
+        const std::vector<unsigned int>& getKeyframesAssociations() const {
+            return this->_keyframes_associations;
+        }
+        
+
+    private:
+
+        unsigned int _meas_idx;
+        unsigned int _pose_idx;
+        std::vector<std::pair<unsigned int, unsigned int>> _points_associations;
+        std::vector<unsigned int> _keyframes_associations;
+
     };
 
 } // namespace SLucAM
@@ -84,57 +99,49 @@ namespace SLucAM {
     
     public:
 
-        State() {this->_last_measurement_idx=0;};
+        State() {this->_next_measurement_idx=0;};
 
         State(cv::Mat& K, std::vector<Measurement>& measurements, \
             const unsigned int expected_poses, \
             const unsigned int expected_landmarks);
-
-        void initializeState(cv::Mat& new_pose, \
-                            std::vector<cv::Point3f>& new_landmarks, \
-                            const std::vector<cv::KeyPoint>& points1, \
-                            const std::vector<cv::KeyPoint>& points2, \
-                            const std::vector<cv::DMatch>& matches, \
-                            const std::vector<unsigned int>& idxs, \
-                            const unsigned int& measure1_idx, \
-                            const unsigned int& measure2_idx);
-
+        
+        bool initializeState(Matcher& matcher, \
+                            const unsigned int& ransac_iter=200, \
+                            const float& rotation_only_threshold_rate=5);
+        
         bool updateState(Matcher& matcher, \
                         const bool& triangulate_new_points);
-
-        const std::vector<cv::Mat>& getPoses() const \
-                {return this->_poses;};
-
-        const std::vector<Measurement>& getMeasurements() const \
-                {return this->_measurements;};
-
-        const std::vector<cv::Point3f>& getLandmarks() const \
-                {return this->_landmarks;};
-
-        const cv::Mat& getCameraMatrix() const \
-                {return this->_K;};
-
-        const std::vector<LandmarkObservation>& getLandmarkObservations() const \
-                {return this->_landmark_observations;};
-
-        const std::vector<PoseObservation>& getPoseObservations() const \
-                {return this->_pose_observations;};
         
-        const unsigned int& getLastMeasurementIdx() const \
-                {return this->_last_measurement_idx;};
-        
-        void setLastMeasurementIdx(const unsigned int new_last_measurement_idx) {
-            this->_last_measurement_idx = new_last_measurement_idx;
-        };
-
-        bool noMoreMeasurements() {
-            return (this->_last_measurement_idx >= this->_measurements.size()-1);
-        };
-
         void performBundleAdjustment(const float& n_iterations, \
                                         const float& damping_factor, \
                                         const float& kernel_threshold, \
                                         const float& threshold_to_ignore);
+
+        const unsigned int reaminingMeasurements() const {
+            return (this->_measurements.size() - this->_next_measurement_idx);
+        };
+
+        void addKeyFrame(const unsigned int& meas_idx, const unsigned int& pose_idx, \
+                        std::vector<std::pair<unsigned int, unsigned int>>& _points_associations, \
+                        const unsigned int& observer_keyframe_idx);
+
+        const cv::Mat& getCameraMatrix() const \
+            {return this->_K;};
+
+        const Measurement& getNextMeasurement() \
+            {return this->_measurements[this->_next_measurement_idx++];};
+        
+        const std::vector<Measurement>& getMeasurements() const \
+            {return this->_measurements;};
+
+        const std::vector<cv::Mat>& getPoses() const \
+            {return this->_poses;};
+
+        const std::vector<cv::Point3f>& getLandmarks() const \
+            {return this->_landmarks;};
+
+        const std::vector<Keyframe>& getKeyframes() const \
+            {return this->_keyframes;};
     
     private:
 
@@ -144,7 +151,7 @@ namespace SLucAM {
                         const std::vector<cv::Mat>& poses, \
                         const std::vector<cv::Point3f>& landmarks, \
                         const std::vector<Measurement>& measurements, \
-                        const std::vector<LandmarkObservation>& associations, \
+                        const std::vector<Keyframe>& keyframes, \
                         const cv::Mat& K, \
                         cv::Mat& H, cv::Mat& b, \
                         float& chi_tot, \
@@ -155,7 +162,7 @@ namespace SLucAM {
         
         static unsigned int buildLinearSystemPoses(\
                         const std::vector<cv::Mat>& poses, \
-                        const std::vector<PoseObservation>& associations, \
+                        const std::vector<Keyframe>& keyframes, \
                         const std::vector<cv::Mat>& poses_measurements, \
                         cv::Mat& H, cv::Mat& b, \
                         float& chi_tot, \
@@ -180,34 +187,25 @@ namespace SLucAM {
                                                     const unsigned int& n_poses) {
             return (n_poses*6) + (idx*3);
         };
-     
-        // The vector containing all the poses, ordered by time
-        std::vector<cv::Mat> _poses;
+
+        // Camera matrix
+        cv::Mat _K;
 
         // The vector containing all the measurements, ordered by time
         std::vector<Measurement> _measurements;
-
-        // In this vector we have the informations of each observation
-        // pose->landmark
-        std::vector<LandmarkObservation> _landmark_observations;    // TODO: this can be optimized
-
-        // In this vector we have the informations of each observation
-        // pose->pose
-        std::vector<PoseObservation> _pose_observations;
-
-        // In this vector, in position i we have how the observed pose i is 
-        // "seen" by the pose i-1
-        std::vector<cv::Mat> _poses_measurements;   // TODO: this is redundant
+     
+        // The vector containing all the poses, ordered by time
+        std::vector<cv::Mat> _poses;
 
         // The vector containing all the triangulated points, ordered
         // by insertion
         std::vector<cv::Point3f> _landmarks;
 
-        // Camera matrix
-        cv::Mat _K;
+        // This vector contains all the keyframe
+        std::vector<Keyframe> _keyframes;
 
-        // Reference to the last analyzed measurement
-        unsigned int _last_measurement_idx;
+        // Reference to the next measurement to analyze
+        unsigned int _next_measurement_idx;
 
     };
 
