@@ -250,9 +250,9 @@ namespace SLucAM {
     // Invert a transformation matrix in a fast way by transposing the
     // rotational part and computing the translational part as
     // -R't
-    cv::Mat& invert_transformation_matrix(const cv::Mat& T_matrix) {
+    cv::Mat invert_transformation_matrix(const cv::Mat& T_matrix) {
 
-        cv::Mat T_matrix_inv;
+        cv::Mat T_matrix_inv = cv::Mat::eye(4,4,CV_32F);
         
         // Reference to rotational part (in transpose way)
         const float& R_11 = T_matrix.at<float>(0,0);
@@ -266,9 +266,9 @@ namespace SLucAM {
         const float& R_33 = T_matrix.at<float>(2,2);
 
         // Reference to the translational part
-        const float& t_x = T_matrix.at<float>(3,0);
-        const float& t_y = T_matrix.at<float>(3,1);
-        const float& t_z = T_matrix.at<float>(3,2);
+        const float& t_x = T_matrix.at<float>(0,3);
+        const float& t_y = T_matrix.at<float>(1,3);
+        const float& t_z = T_matrix.at<float>(2,3);
 
         // Transpose the rotational part
         T_matrix_inv.at<float>(0,0) = R_11;
@@ -729,11 +729,8 @@ namespace SLucAM {
     * triangulated (so guessed)
     * Inputs:
     *   guessed_pose: initial guess
-    *   measurements: all the measurements
-    *   meas_idx: idx of the considered measurement
-    *   landmark_observations: in this vector we have the informations of 
-    *           each observation pose->landmark (we will consider only that 
-    *           observations in this vector with measure idx == meas_idx)
+    *   measurement: the measurement for which we need to predict the pose
+    *   points_associations: list of associations 2D point <-> 3D point
     *   landmarks: set of triangulated landmarks
     *   K: camera matrix
     *   n_iterations: #iterations to perform for Posit
@@ -753,8 +750,7 @@ namespace SLucAM {
                         const float& damping_factor) {
         
         // Initialization
-        const Measurement& meas = measurements[meas_idx];
-        const unsigned int n_observations = landmark_observations.size();
+        const unsigned int n_observations = points_associations.size();
         const float img_rows = 2*K.at<float>(1, 2);
         const float img_cols = 2*K.at<float>(0, 2);
         float current_chi = 0.0;
@@ -776,18 +772,13 @@ namespace SLucAM {
             // For each observation
             for(unsigned int obs_idx=0; obs_idx<n_observations; ++obs_idx) {
 
-                // If the current observation does not refers to the considered
-                // measurement, ignore it
-                if(landmark_observations[obs_idx].measurement_idx != meas_idx)
-                    continue;
-                                
+                // Take the measured 2D point for the current observation
+                const cv::KeyPoint& measured_point = \
+                        measurement.getPoints()[points_associations[obs_idx].first];
+
                 // Take the guessed landmark position of the current observation
                 const cv::Point3f& guessed_landmark = \
-                        landmarks[landmark_observations[obs_idx].landmark_idx];
-                
-                // Take the corresponding measured point
-                const cv::KeyPoint& measured_point = \
-                        meas.getPoints()[landmark_observations[obs_idx].point_idx];
+                        landmarks[points_associations[obs_idx].second];
                 
                 // Compute error and jacobian
                 if(!error_and_jacobian_Posit(guessed_pose, guessed_landmark, \

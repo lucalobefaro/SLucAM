@@ -29,20 +29,25 @@ using namespace std;
 
 int main() {
 
-    // TODO: create Matcher class that will take the BFMathces or 
-    // data associations in the constructor in order to work
-
     // -----------------------------------------------------------------------------
     // Create Environment and set variables
     // -----------------------------------------------------------------------------
     const std::string dataset_folder =  "../data/datasets/my_synthetic_dataset/";
+
     const unsigned int n_ransac_iters = 200;
     const unsigned int rotation_only_threshold_rate = 2;
-    const unsigned int how_many_meas_optimization = 5;
-    const float kernel_threshold_BA = 1000;
-    const float inliers_threshold_BA = 50;
+
+    const unsigned int how_many_meas_optimization = 4;
+    const unsigned int n_iters_POSIT = 50;
+    const unsigned int kernel_threshold_POSIT = 1000;
+    const float inliers_threshold_POSIT = 5000;
+
+    const unsigned int n_iters_BA = 5;
+    const float kernel_threshold_proj_BA = 100;
+    const float inliers_threshold_proj_BA = 500;
+    const float kernel_threshold_pose_BA = 10;
     const float damping_factor = 1;
-    const unsigned int n_BA_iters = 5;
+
     SLucAM::State state;
 
     std::vector<std::vector<unsigned int>> data_associations;
@@ -86,13 +91,21 @@ int main() {
     }
     
     for(unsigned int i=0; i<how_many_meas_optimization; ++i) {
-        if(!state.updateState(matcher, false)){
+        if(!state.integrateNewMeasurement(matcher, \
+                                            false, \
+                                            n_iters_POSIT, \
+                                            kernel_threshold_POSIT, \
+                                            inliers_threshold_POSIT, \
+                                            damping_factor)){
             cout << "ERROR: no more measurement to integrate" << endl;
             return 1;
         }
     }
-    //state.performBundleAdjustment(n_BA_iters, damping_factor, \
-                                kernel_threshold_BA, inliers_threshold_BA);
+    //state.performBundleAdjustment(n_iters_BA, \
+                                    kernel_threshold_proj_BA, \
+                                    inliers_threshold_proj_BA, \
+                                    kernel_threshold_pose_BA, \
+                                    damping_factor);
     
 
     // -----------------------------------------------------------------------------
@@ -106,7 +119,7 @@ int main() {
 
 
     /*
-    // HERE THE FUNCTION TO SPEED TEST
+    // HERE THE FUNCTION FOR SPEED TEST
     start = high_resolution_clock::now();
     stop = high_resolution_clock::now();
     auto duration2 = duration_cast<microseconds>(stop - start);

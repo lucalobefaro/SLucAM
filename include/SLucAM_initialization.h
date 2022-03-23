@@ -25,7 +25,7 @@ namespace SLucAM {
     bool initialize(const Measurement& meas1, \
                     const Measurement& meas2, \
                     Matcher& matcher, \
-                    const cv::Mat& K, cv::Mat predicted_pose, \
+                    const cv::Mat& K, cv::Mat& predicted_pose, \
                     std::vector<cv::Point3f>& triangulated_points, \
                     std::vector<std::pair<unsigned int, unsigned int>>& \
                         meas1_points_associations, \

@@ -117,9 +117,10 @@ namespace SLucAM {
                                     const float& posit_damping_factor=1);
         
         void performBundleAdjustment(const float& n_iterations, \
-                                        const float& damping_factor, \
-                                        const float& kernel_threshold, \
-                                        const float& threshold_to_ignore);
+                                    const float& kernel_threshold_proj, \
+                                    const float& threshold_to_ignore_proj, \
+                                    const float& kernel_threshold_pose, \
+                                    const float& damping_factor);
 
         const unsigned int reaminingMeasurements() const {
             return (this->_measurements.size() - this->_next_measurement_idx);

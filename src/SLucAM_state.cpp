@@ -201,9 +201,10 @@ namespace SLucAM {
     *           too outlier to be considered
     */
     void State::performBundleAdjustment(const float& n_iterations, \
-                                        const float& damping_factor, \
-                                        const float& kernel_threshold, \
-                                        const float& threshold_to_ignore){
+                                        const float& kernel_threshold_proj, \
+                                        const float& threshold_to_ignore_proj, \
+                                        const float& kernel_threshold_pose, \
+                                        const float& damping_factor){
         
         // Initialization
         const float img_rows = 2*this->_K.at<float>(1, 2);
@@ -236,7 +237,7 @@ namespace SLucAM {
                                                         this->_keyframes, \
                                                         this->_K, H, b, \
                                                         chi_stats_projection[iter], \
-                                                        kernel_threshold, threshold_to_ignore, \
+                                                        kernel_threshold_proj, threshold_to_ignore_proj, \
                                                         img_rows, img_cols);
 
             }
@@ -244,8 +245,12 @@ namespace SLucAM {
             // Add to H and b matrices the values from poses
             n_inliers_pose[iter] = \
                 State::buildLinearSystemPoses(this->_poses, this->_keyframes, \
-                                        H, b, chi_stats_pose[iter], kernel_threshold);
+                                        H, b, chi_stats_pose[iter], \
+                                        kernel_threshold_pose);
             
+            cout << n_inliers_projection[iter] << endl;
+            cout << n_inliers_pose[iter] << endl;
+
             // Damping of the H matrix
             H += DampingMatrix;
 
@@ -259,7 +264,7 @@ namespace SLucAM {
             Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> \
                         b_Eigen(b.ptr<float>(), b.rows, b.cols);
             Eigen::VectorXf dx_Eigen = H_Eigen.block(6,6,system_size-6,system_size-6)\
-                        .llt().solve(-b_Eigen.block(6,0,system_size-6,1));
+                        .ldlt().solve(-b_Eigen.block(6,0,system_size-6,1));
             cv::Mat dx(dx_Eigen.rows(), dx_Eigen.cols(), CV_32F, dx_Eigen.data());
 
             // Apply the perturbation (we assume that the first 6 elements of dx 
@@ -399,7 +404,7 @@ namespace SLucAM {
             n_observations_per_keyframe = current_observations.size();
 
             // For each observation in the current keyframe
-            for(unsigned int observation_idx; \
+            for(unsigned int observation_idx = 0; \
                     observation_idx < n_observations_per_keyframe; \
                     ++observation_idx) {
                 
@@ -737,7 +742,7 @@ namespace SLucAM {
             n_observations_per_keyframe = current_observations.size();
 
             // For each observation in the current keyframe
-            for(unsigned int observation_idx; \
+            for(unsigned int observation_idx = 0; \
                     observation_idx < n_observations_per_keyframe; \
                     ++observation_idx) {
 
