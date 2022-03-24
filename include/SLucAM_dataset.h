@@ -45,6 +45,12 @@ namespace SLucAM {
     bool load_synthetic_dataset(const std::string& dataset_folder, State& state, \
                                 std::vector<std::vector<unsigned int>>& associations);
     bool load_synthetic_camera_matrix(const std::string& filename, cv::Mat& K);
+    bool load_3dpoints_ground_truth(const std::string& filename, \
+                                    std::vector<cv::Point3f>& gt_points);
+    float test_predicted_points(const std::string& dataset_folder, \
+                                const std::vector<Keyframe>& keyframes, \
+                                const std::vector<cv::Point3f>& predicted_points, \
+                                const std::vector<std::vector<unsigned int>>& associations);
 } // namespace SLucAM
 
 

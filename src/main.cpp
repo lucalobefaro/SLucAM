@@ -111,11 +111,21 @@ int main() {
     // -----------------------------------------------------------------------------
     // TEST
     // -----------------------------------------------------------------------------
+    
+    // Visualize predicted poses
     const unsigned int n_poses = state.getPoses().size();
     for(unsigned int i=0; i<n_poses; ++i) {
         cout << "POSE " << i << endl;
         cout << state.getPoses()[i] << endl << endl;
     }
+
+    // Test predicted 3D points
+    cout << "#LANDMARKS PREDICTED: " << state.getLandmarks().size() << endl;
+    cout << "LANDMARKS PREDICTION ERROR: " << SLucAM::test_predicted_points(dataset_folder, \
+                                                        state.getKeyframes(), \
+                                                        state.getLandmarks(), \
+                                                        data_associations) \
+        << endl;
 
 
     /*
