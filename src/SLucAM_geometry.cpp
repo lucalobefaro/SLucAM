@@ -10,6 +10,7 @@
 #include <Eigen/Core>
 #include <Eigen/Cholesky>
 #include <Eigen/Geometry>
+#include <limits>
 
 // TODO delete this
 #include <iostream>
@@ -356,6 +357,41 @@ namespace SLucAM {
         quaternion.at<float>(1,0) = Eigen_quaternion.x();
         quaternion.at<float>(2,0) = Eigen_quaternion.y();
         quaternion.at<float>(3,0) = Eigen_quaternion.z();
+    }
+
+
+
+    /* 
+    * This function takes a 3D point p and a costellation c of points
+    * and return a pair:
+    *   <idx of the nearest point to p in c, distance>
+    */
+    std::pair<unsigned int, float> nearest_3d_point(\
+            const cv::Point3f& p, const std::vector<cv::Point3f>& c) {
+
+        // Initialization
+        const unsigned int& n_points = c.size();
+        float current_distance;
+        std::pair<unsigned int, float> result(-1, std::numeric_limits<float>::max());
+
+        // For each point in the costellation c
+        for(unsigned int i=0; i<n_points; ++i) {
+            
+            // Take the current point
+            const cv::Point3f& p2 = c[i];
+
+            // Compute distance
+            current_distance = cv::norm(p-p2);
+
+            // If it is the nearest one so far, save it
+            if(current_distance < result.second) {
+                result.first = i;
+                result.second = current_distance;
+            }
+        }
+
+        return result;
+
     }
     
 } // namespace SLucAM

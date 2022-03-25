@@ -23,7 +23,6 @@ namespace SLucAM {
     void normalize_points(const std::vector<cv::KeyPoint>& points, \
                             std::vector<cv::KeyPoint>& normalized_points, \
                             cv::Mat& T);
-    
     unsigned int triangulate_points(const std::vector<cv::KeyPoint>& p_img1, \
                                     const std::vector<cv::KeyPoint>& p_img2, \
                                     const std::vector<cv::DMatch>& matches, \
@@ -35,6 +34,8 @@ namespace SLucAM {
     cv::Mat invert_transformation_matrix(const cv::Mat& T_matrix);
     void quaternion_to_matrix(const cv::Mat& quaternion, cv::Mat& R);
     void matrix_to_quaternion(cv::Mat& R, cv::Mat& quaternion);
+    std::pair<unsigned int, float> nearest_3d_point(\
+            const cv::Point3f& p, const std::vector<cv::Point3f>& c);
 } // namespace SLucAM
 
 

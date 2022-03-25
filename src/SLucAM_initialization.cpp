@@ -44,16 +44,13 @@ namespace SLucAM {
                     const Measurement& meas2, \
                     Matcher& matcher, \
                     const cv::Mat& K, cv::Mat& predicted_pose, \
+                    std::vector<cv::DMatch>& matches, \
+                    std::vector<unsigned int>& matches_filter, \
                     std::vector<cv::Point3f>& triangulated_points, \
-                    std::vector<std::pair<unsigned int, unsigned int>>& \
-                        meas1_points_associations, \
-                    std::vector<std::pair<unsigned int, unsigned int>>& \
-                        meas2_points_associations, \
                     const unsigned int& ransac_iter, \
                     const float& rotation_only_threshold_rate) {
         
         // Match the two measurements
-        vector<cv::DMatch> matches;
         matcher.match_measurements(meas1, meas2, matches);
         unsigned int n_matches = matches.size();
 
@@ -110,8 +107,6 @@ namespace SLucAM {
         }
 
         // From the inliers mask compute a vector of indices for matches
-        // TODO: optimize this
-        std::vector<unsigned int> matches_filter;
         matches_filter.reserve(n_matches);
         for(unsigned int i=0; i<n_matches; ++i) {
             if(inliers_mask_F[i]) {
@@ -126,36 +121,8 @@ namespace SLucAM {
         F = T1.t()*F*T2;    // Denormalization
 
         // Compute pose of image2 w.r.t. image1 from F
-        std::vector<cv::Point3f> predicted_3d_points;
         extract_X_from_F(p_img1, p_img2, matches, matches_filter, \
-                            F, K, predicted_pose, predicted_3d_points);
-        
-        // Initialize points associations
-        const unsigned int n_associations = matches_filter.size();
-        triangulated_points.reserve(n_associations);
-        meas1_points_associations.reserve(n_associations);
-        meas2_points_associations.reserve(n_associations);
-        unsigned int current_landmark_idx;
-        for(unsigned int i=0; i<n_associations; ++i) {
-            
-            // If the landmark is not triangulated in a good way
-            // ignore this association
-            if(predicted_3d_points[i].x == 0 && \
-                predicted_3d_points[i].y == 0 && \
-                predicted_3d_points[i].z == 0) {
-                continue;                   
-            }
-
-            triangulated_points.emplace_back(predicted_3d_points[i]);
-            current_landmark_idx = triangulated_points.size()-1;
-            meas1_points_associations.emplace_back(\
-                    matches[matches_filter[i]].queryIdx, current_landmark_idx);
-            meas2_points_associations.emplace_back(\
-                    matches[matches_filter[i]].trainIdx, current_landmark_idx);
-        }
-        triangulated_points.shrink_to_fit();
-        meas1_points_associations.shrink_to_fit();
-        meas2_points_associations.shrink_to_fit();
+                            F, K, predicted_pose, triangulated_points);
         
         return true;
 

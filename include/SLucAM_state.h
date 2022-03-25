@@ -50,9 +50,14 @@ namespace SLucAM {
             this->_points_associations.reserve(n_points_meas);
         }
 
-        void addPointAssociation(const unsigned int& point_idx, \
-                                const unsigned int& landmark_idx){
-            this->_points_associations.emplace_back(point_idx, landmark_idx);
+        void addPointAssociation(const unsigned int& p_idx, const unsigned int& l_idx) {
+            this->_points_associations.emplace_back(p_idx, l_idx);
+        }
+
+        void addPointsAssociations(std::vector<std::pair<unsigned int, unsigned int>>& \
+                                        new_points_associations){
+            this->_points_associations.insert(this->_points_associations.end(), \
+                new_points_associations.begin(), new_points_associations.end()); 
         }
 
         void addKeyframeAssociation(const unsigned int& pose_idx){
@@ -106,7 +111,7 @@ namespace SLucAM {
             const unsigned int expected_landmarks);
         
         bool initializeState(Matcher& matcher, \
-                            const unsigned int& ransac_iter=200, \
+                            const unsigned int& ransac_iters=200, \
                             const float& rotation_only_threshold_rate=5);
         
         bool integrateNewMeasurement(Matcher& matcher, \
@@ -114,7 +119,8 @@ namespace SLucAM {
                                     const unsigned int& posit_n_iters=50, \
                                     const float& posit_kernel_threshold=1000, \
                                     const float& posit_threshold_to_ignore=5000, \
-                                    const float& posit_damping_factor=1);
+                                    const float& posit_damping_factor=1, \
+                                    const unsigned int& triangulation_window=6);
         
         void performBundleAdjustment(const float& n_iterations, \
                                     const float& kernel_threshold_proj, \
@@ -151,6 +157,24 @@ namespace SLucAM {
     private:
 
         void boxPlus(cv::Mat& dx);
+
+        static void triangulateNewPoints(std::vector<Keyframe>& keyframes, \
+                                        std::vector<cv::Point3f>& landmarks, \
+                                        const std::vector<Measurement>& measurements, \
+                                        const std::vector<cv::Mat>& poses, \
+                                        Matcher& matcher, \
+                                        const cv::Mat& K, \
+                                        const unsigned int& triangulation_window, \
+                                        const float& new_landmark_threshold=1); // TODO: detrmine a good default value for this threshold
+
+        static void associateNewLandmarks(const std::vector<cv::Point3f>& predicted_landmarks, \
+                                        const std::vector<cv::DMatch>& matches, \
+                                        const std::vector<unsigned int>& matches_filter, \
+                                        std::vector<cv::Point3f>& landmarks, \
+                                        std::vector<std::pair<unsigned int, \
+                                                unsigned int>>& meas1_points_associations, \
+                                        std::vector<std::pair<unsigned int, \
+                                                unsigned int>>& meas2_points_associations);
     
         static unsigned int buildLinearSystemProjections(\
                         const std::vector<cv::Mat>& poses, \

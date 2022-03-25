@@ -106,7 +106,25 @@ int main() {
                                     inliers_threshold_proj_BA, \
                                     kernel_threshold_pose_BA, \
                                     damping_factor);
+    cout << "DONE!" << endl << endl;
     
+
+
+    // -----------------------------------------------------------------------------
+    // INTEGRATE NEW MEASUREMENT AND EXPAND MAP
+    // -----------------------------------------------------------------------------
+    cout << "ESPLORATION STARTED ..." << endl;
+    while(state.reaminingMeasurements() != 0) {
+        state.integrateNewMeasurement(matcher, \
+                                    true, \
+                                    n_iters_POSIT, \
+                                    kernel_threshold_POSIT, \
+                                    inliers_threshold_POSIT, \
+                                    damping_factor);
+    }
+    cout << "DONE!" << endl << endl;
+
+
 
     // -----------------------------------------------------------------------------
     // TEST

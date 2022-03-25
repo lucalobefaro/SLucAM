@@ -26,11 +26,9 @@ namespace SLucAM {
                     const Measurement& meas2, \
                     Matcher& matcher, \
                     const cv::Mat& K, cv::Mat& predicted_pose, \
+                    std::vector<cv::DMatch>& matches, \
+                    std::vector<unsigned int>& matches_filter, \
                     std::vector<cv::Point3f>& triangulated_points, \
-                    std::vector<std::pair<unsigned int, unsigned int>>& \
-                        meas1_points_associations, \
-                    std::vector<std::pair<unsigned int, unsigned int>>& \
-                        meas2_points_associations, \
                     const unsigned int& ransac_iter=200, \
                     const float& rotation_only_threshold_rate=5);
 
