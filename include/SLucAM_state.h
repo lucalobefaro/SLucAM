@@ -50,6 +50,22 @@ namespace SLucAM {
             this->_points_associations.reserve(n_points_meas);
         }
 
+        /*
+        * Givena point, returns the corresponding landmark. If no association
+        * for such point is present, return -1.
+        */
+        const unsigned int point2Landmark(const unsigned int& point_idx) const {
+            const unsigned int& n_associations = this->_points_associations.size();
+            for(unsigned int i=0; i<n_associations; ++i) {
+                const std::pair<unsigned int, unsigned int>& current_association = \
+                     this->_points_associations[i];
+                if(current_association.first == point_idx) {
+                    return current_association.second;
+                }
+            }
+            return -1;
+        }
+
         void addPointAssociation(const unsigned int& p_idx, const unsigned int& l_idx) {
             this->_points_associations.emplace_back(p_idx, l_idx);
         }
@@ -174,7 +190,9 @@ namespace SLucAM {
                                         std::vector<std::pair<unsigned int, \
                                                 unsigned int>>& meas1_points_associations, \
                                         std::vector<std::pair<unsigned int, \
-                                                unsigned int>>& meas2_points_associations);
+                                                unsigned int>>& meas2_points_associations, \
+                                        const bool& filter_near_points, \
+                                        const float& new_landmark_threshold);
     
         static unsigned int buildLinearSystemProjections(\
                         const std::vector<cv::Mat>& poses, \

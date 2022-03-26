@@ -86,7 +86,7 @@ namespace SLucAM {
         // and create the associations vector for each measurement
         associateNewLandmarks(triangulated_points, matches, matches_filter, \
                                 this->_landmarks, meas1_points_associations, \
-                                 meas2_points_associations);
+                                 meas2_points_associations, false, 0);
 
         // Create the first pose (we assume it at the origin) and use it as new keyframe
         this->_poses.emplace_back(cv::Mat::eye(4,4,CV_32F));
@@ -141,27 +141,14 @@ namespace SLucAM {
         matcher.match_measurements(meas1, meas2, matches);
         const unsigned int n_matches = matches.size();
 
-        // Create a vector in which in position i we have the idx of the 
-        // landmark to which refers the point i in the keyframe used as 
-        // first measurement, -1 if no such association exists
-        const unsigned int n_points = meas1.getPoints().size();
-        const std::vector<std::pair<unsigned int, unsigned int>>& \
-                meas1_points_associations = last_keyframe.getPointsAssociations();
-        const unsigned int n_associations = meas1_points_associations.size();
-        
-        std::vector<int> point_2_landmark(n_points, -1);
-        for(unsigned int i=0; i<n_associations; ++i) {
-            point_2_landmark[meas1_points_associations[i].first] = \
-                meas1_points_associations[i].second;
-        }
-
         // Create the association vector points<->landmark by using the
         // matched points for which we already have a 3D point prediction
         // in the first measurement
         std::vector<std::pair<unsigned int, unsigned int>> points_associations;
-        int current_3d_point_idx;
+        unsigned int current_3d_point_idx;
         for(unsigned int i=0; i<n_matches; ++i) {
-            current_3d_point_idx = point_2_landmark[matches[i].queryIdx];
+            current_3d_point_idx = \
+                last_keyframe.point2Landmark(matches[i].queryIdx);
             if(current_3d_point_idx != -1) {
                 points_associations.emplace_back(matches[i].trainIdx, \
                                                 current_3d_point_idx);
@@ -381,10 +368,10 @@ namespace SLucAM {
         const cv::Mat& pose2 = poses[last_keyframe.getPoseIdx()];
 
         // For each measurement in the window, triangulate new points
-        for(unsigned int i=1; i<window+1; ++i) {
+        for(unsigned int windows_idx=1; windows_idx<window+1; ++windows_idx) {
             
             // Take the reference to the keyframe with which triangulate
-            Keyframe& current_keyframe = keyframes[n_keyframes-i];
+            Keyframe& current_keyframe = keyframes[n_keyframes-windows_idx];
             const Measurement& meas1 = measurements[current_keyframe.getMeasIdx()];
             const cv::Mat& pose1 = poses[current_keyframe.getPoseIdx()];
 
@@ -394,28 +381,39 @@ namespace SLucAM {
             matcher.match_measurements(meas1, meas2, matches);
             const unsigned int n_matches = matches.size();
 
-            // Create a vector in which in position i we have the idx of the 
-            // landmark to which refers the point i in the keyframe used as 
-            // first measurement, -1 if no such association exists
-            const unsigned int n_points = meas1.getPoints().size();
-            const std::vector<std::pair<unsigned int, unsigned int>>& \
-                    meas1_points_associations = current_keyframe.getPointsAssociations();
-            const unsigned int n_associations = meas1_points_associations.size();
-            
-            std::vector<int> point_2_landmark(n_points, -1);
-            for(unsigned int i=0; i<n_associations; ++i) {
-                point_2_landmark[meas1_points_associations[i].first] = \
-                    meas1_points_associations[i].second;
-            }
-
-            // Build a vector to filter out the matches for which we have
-            // already a 3D point prediction
+            // Build a matches filter, to take into account only those
+            // matched 2D points for which we don't have already a 3D point associated
             std::vector<unsigned int> matches_filter;
             matches_filter.reserve(n_matches);
-            for(unsigned int i=0; i<n_matches; ++i) {
-                if(point_2_landmark[matches[i].queryIdx] == -1) {
-                    matches_filter.emplace_back(i);
+            for(unsigned int match_idx=0; match_idx<n_matches; ++match_idx) {
+                
+                // Take references to the two points in the current match
+                const unsigned int& p1 = matches[match_idx].queryIdx;
+                const unsigned int& p2 = matches[match_idx].trainIdx;
+                const unsigned int& p1_3dpoint_idx = current_keyframe.point2Landmark(p1);
+                const unsigned int& p2_3dpoint_idx = current_keyframe.point2Landmark(p2);
+
+                // Check if we have already a 3D point associated to p1
+                if(p1_3dpoint_idx == -1) {
+
+                    // If we do not have a 3D point associated neither to p2
+                    // use this match to triangulate
+                    if(p2_3dpoint_idx == -1) {
+                        matches_filter.emplace_back(match_idx);
+                    } else {
+                        // Otherwise, add that association to the first keyframe
+                        current_keyframe.addPointAssociation(p1, p2_3dpoint_idx);
+                    }
+
+                } else {
+
+                    // If we do not have a 3D point associated to p2, add that association
+                    if(p2_3dpoint_idx == -1) {
+                        last_keyframe.addPointAssociation(p2, p1_3dpoint_idx);
+                    }
+
                 }
+
             }
             matches_filter.shrink_to_fit();
 
@@ -426,54 +424,18 @@ namespace SLucAM {
                                 matches, matches_filter, \
                                 pose_2_wrt_pose_1, K, \
                                 triangulated_points);
-
-            // Filter out triangulated landmarks too near to another predicted 3D
-            // point in the landmarks vector
-            // TODO: this will go in the function associateNewLandmarks
-            const unsigned int n_filtered_matches = matches_filter.size();
-            std::vector<unsigned int> new_matches_filter;
-            new_matches_filter.reserve(n_filtered_matches);
-            for(unsigned int m_idx=0; m_idx<n_filtered_matches; ++m_idx) {
-
-                // Get the current 3D point
-                const cv::Point3f& current_point = triangulated_points[i];
-                
-                // Compute the nearest point
-                const std::pair<unsigned int, float> nearest_distance = \
-                    nearest_3d_point(current_point, landmarks);
-                
-                // If the nearest point is under a threshold
-                if(nearest_distance.second < new_landmark_threshold) {
-
-                    // Associate that landmark to the points from which
-                    // the alias has been triangulated
-                    current_keyframe.addPointAssociation(\
-                        matches[matches_filter[i]].queryIdx, nearest_distance.first);
-                    last_keyframe.addPointAssociation(\
-                        matches[matches_filter[i]].trainIdx, nearest_distance.first);
-
-                } else {
-
-                    // Do not filter out it
-                    new_matches_filter.emplace_back(matches_filter[i]);
-
-                }
-            }
-            new_matches_filter.shrink_to_fit();
             
             // Add new triangulated points to the state
             // (in landmarks vector and in corresponding keyframes)
             std::vector<std::pair<unsigned int, unsigned int>> new_points_associations1;
             std::vector<std::pair<unsigned int, unsigned int>> new_points_associations2;
-            associateNewLandmarks(triangulated_points, matches, new_matches_filter, \
+            associateNewLandmarks(triangulated_points, matches, matches_filter, \
                                 landmarks, new_points_associations1, \
-                                new_points_associations2);
+                                new_points_associations2, true, new_landmark_threshold);
             current_keyframe.addPointsAssociations(new_points_associations1);
             last_keyframe.addPointsAssociations(new_points_associations2);
 
         }
-
-        // TODO: filter landmarks
 
     }
 
@@ -484,15 +446,21 @@ namespace SLucAM {
     * of triangulated points between them and adds to the landmarks vector only
     * valid triangulated points, creating, in the meanwhile, the association
     * vector 2D point <-> 3D point between each of the two measurements.
+    * If requested (filter_near_points=true) it also filters out all those points
+    * predicted that are too near to some other point in the landmarks vector (so
+    * already triangulated). In such case also update correctly the points
+    * associations.
     * Inputs:
     *   predicted_landmarks: the set of triangulated point, one for each filtered
-    *       matches
+    *       matches.
     *   matches
     *   matches_filter
     *   landmarks: the vector where to add only the valid predicted landmarks (output)
-    *       (it can be empty or already filled and we assume it already "reserved")
+    *       (it can be empty or already filled and we assume it already "reserved").
     *   meas1_points_associations/meas2_points_associations: the associations vectors
-    *       2D point <-> 3D point (outputs)
+    *       2D point <-> 3D point (outputs).
+    *   filter_near_points: if true filters out too near 3D points
+    *   new_landmark_threshold: filter for too near 3D points
     */
     void State::associateNewLandmarks(const std::vector<cv::Point3f>& predicted_landmarks, \
                                         const std::vector<cv::DMatch>& matches, \
@@ -501,7 +469,9 @@ namespace SLucAM {
                                         std::vector<std::pair<unsigned int, \
                                                 unsigned int>>& meas1_points_associations, \
                                         std::vector<std::pair<unsigned int, \
-                                                unsigned int>>& meas2_points_associations) {
+                                                unsigned int>>& meas2_points_associations, \
+                                        const bool& filter_near_points, \
+                                        const float& new_landmark_threshold) {
         
         // Initialization
         const unsigned int n_associations = matches_filter.size();
@@ -510,16 +480,42 @@ namespace SLucAM {
 
         unsigned int current_landmark_idx;
         for(unsigned int i=0; i<n_associations; ++i) {
+
+            // Get the current 3D point
+            const cv::Point3f& current_point = predicted_landmarks[i];
             
             // If the landmark is not triangulated in a good way
             // ignore this association
-            if(predicted_landmarks[i].x == 0 && \
-                predicted_landmarks[i].y == 0 && \
-                predicted_landmarks[i].z == 0) {
+            if(current_point.x == 0 && \
+                current_point.y == 0 && \
+                current_point.z == 0) {
                 continue;                   
             }
 
-            landmarks.emplace_back(predicted_landmarks[i]);
+            // If the filter is requested
+            if(filter_near_points) {
+
+                // Compute the nearest point
+                const std::pair<unsigned int, float> nearest_distance = \
+                    nearest_3d_point(current_point, landmarks);
+                
+                // If the nearest point is under a threshold
+                if(nearest_distance.second < new_landmark_threshold) {
+
+                    // Associate that landmark to the points from which
+                    // the alias has been triangulated
+                    meas1_points_associations.emplace_back(\
+                        matches[matches_filter[i]].queryIdx, nearest_distance.first);
+                    meas2_points_associations.emplace_back(\
+                        matches[matches_filter[i]].trainIdx, nearest_distance.first);
+
+                    continue;
+
+                }
+
+            }
+
+            landmarks.emplace_back(current_point);
             current_landmark_idx = landmarks.size()-1;
             meas1_points_associations.emplace_back(\
                     matches[matches_filter[i]].queryIdx, current_landmark_idx);
