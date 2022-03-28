@@ -179,30 +179,36 @@ namespace SLucAM {
         // Compute the parallax between the two poses
         float parallax = computeParallax(pose_1, predicted_pose, \
                             this->_landmarks, common_landmarks_ids);
-                
-        // Add the new pose observed and use it as keyframe if we have enough 
-        // parallax
+
+        // Add the new pose
         this->_poses.emplace_back(predicted_pose);
+                
+        // If we have enough parallax
         if(parallax > parallax_threshold) { 
+
+            // Use the new pose/measure as keyframe
             addKeyFrame(this->_next_measurement_idx-1, this->_poses.size()-1, \
                     points_associations, this->_keyframes.size()-1);
+
+            // If requested add new landmarks triangulating 
+            // new matches between the last integrated keyframe and the last n 
+            // (specified by triangulation_window) keyframes
+            if(triangulate_new_points) {
+                
+                triangulateNewPoints(this->_keyframes, \
+                                    this->_landmarks, \
+                                    this->_measurements, \
+                                    this->_poses, \
+                                    matcher, \
+                                    this->_K, \
+                                    triangulation_window, \
+                                    new_landmark_threshold);
+
+            }
+
         }
 
-        // If requested and enought parallax add new landmarks triangulating 
-        // new matches between the last integrated keyframe and the last n 
-        // (specified by triangulation_window) keyframes
-        if(triangulate_new_points && (parallax > parallax_threshold) ) {
-            
-            triangulateNewPoints(this->_keyframes, \
-                                this->_landmarks, \
-                                this->_measurements, \
-                                this->_poses, \
-                                matcher, \
-                                this->_K, \
-                                triangulation_window, \
-                                new_landmark_threshold);
-
-        }
+        
 
         return true;
 
@@ -460,15 +466,19 @@ namespace SLucAM {
 
             // Build a matches filter, to take into account only those
             // matched 2D points for which we don't have already a 3D point associated
+            // In the meanwhile create a vector of common landmarks ids for parallax
+            // computation
             std::vector<unsigned int> matches_filter;
+            std::vector<unsigned int> common_landmarks_ids;
             matches_filter.reserve(n_matches);
+            common_landmarks_ids.reserve(n_matches);
             for(unsigned int match_idx=0; match_idx<n_matches; ++match_idx) {
                 
                 // Take references to the two points in the current match
                 const unsigned int& p1 = matches[match_idx].queryIdx;
                 const unsigned int& p2 = matches[match_idx].trainIdx;
-                const int& p1_3dpoint_idx = current_keyframe.point2Landmark(p1);
-                const int& p2_3dpoint_idx = current_keyframe.point2Landmark(p2);
+                const int p1_3dpoint_idx = current_keyframe.point2Landmark(p1);
+                const int p2_3dpoint_idx = last_keyframe.point2Landmark(p2);
 
                 // Check if we have already a 3D point associated to p1
                 if(p1_3dpoint_idx == -1) {
@@ -488,12 +498,25 @@ namespace SLucAM {
                     // for p1
                     if(p2_3dpoint_idx == -1) {
                         last_keyframe.addPointAssociation(p2, p1_3dpoint_idx);
+                    } else {
+                        // In this case both points have already a prediction,
+                        // if it is the same, consider that prediction as 
+                        // common landmark
+                        if(p1_3dpoint_idx == p2_3dpoint_idx) {
+                            common_landmarks_ids.emplace_back(p1_3dpoint_idx);
+                        }
                     }
 
                 }
 
             }
             matches_filter.shrink_to_fit();
+            common_landmarks_ids.shrink_to_fit();
+
+            // Compute the parallax
+            float parallax = computeParallax(pose1, pose2, \
+                                landmarks, common_landmarks_ids);
+            cout << parallax << endl;
 
             // Triangulate new points
             std::vector<cv::Point3f> triangulated_points;
@@ -502,7 +525,7 @@ namespace SLucAM {
                                 matches, matches_filter, \
                                 pose_2_wrt_pose_1, K, \
                                 triangulated_points);
-            
+                        
             // Add new triangulated points to the state
             // (in landmarks vector and in corresponding keyframes)
             std::vector<std::pair<unsigned int, unsigned int>> new_points_associations1;

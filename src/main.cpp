@@ -125,6 +125,7 @@ int main() {
     cout << "DONE!" << endl << endl;
 
 
+
     // -----------------------------------------------------------------------------
     // TEST
     // -----------------------------------------------------------------------------
@@ -156,6 +157,7 @@ int main() {
             cout << " ], #PREDICTED POINTS: " << state.getKeyframes()[i].getPointsAssociations().size() \
             << "/" << state.getMeasurements()[state.getKeyframes()[i].getMeasIdx()].getPoints().size() << endl;
     }
+
 
     /*
     // HERE THE FUNCTION FOR SPEED TEST

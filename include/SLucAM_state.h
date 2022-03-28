@@ -138,7 +138,7 @@ namespace SLucAM {
                                     const float& posit_damping_factor=1, \
                                     const unsigned int& triangulation_window=6, \
                                     const float& parallax_threshold=1.0, \
-                                    const float& new_landmark_threshold=0.01);
+                                    const float& new_landmark_threshold=0.1);
         
         void performBundleAdjustment(const float& n_iterations, \
                                     const float& kernel_threshold_proj, \
