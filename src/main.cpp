@@ -125,7 +125,6 @@ int main() {
     cout << "DONE!" << endl << endl;
 
 
-
     // -----------------------------------------------------------------------------
     // TEST
     // -----------------------------------------------------------------------------
@@ -143,8 +142,15 @@ int main() {
                                                         state.getKeyframes(), \
                                                         state.getLandmarks(), \
                                                         data_associations) \
-        << endl;
+        << endl << endl;
 
+    // Test keyframes
+    cout << "#KEYFRAMES: " << state.getKeyframes().size() << endl;
+    for(unsigned int i=0; i<state.getKeyframes().size(); ++i) {
+        cout << "#" << i << ", MEAS: " << state.getKeyframes()[i].getMeasIdx() \
+            << ", POSE: " << state.getKeyframes()[i].getMeasIdx() \
+            << ", #POINTS: " << state.getKeyframes()[i].getPointsAssociations().size() << endl;
+    }
 
     /*
     // HERE THE FUNCTION FOR SPEED TEST

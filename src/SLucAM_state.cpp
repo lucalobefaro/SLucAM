@@ -123,7 +123,9 @@ namespace SLucAM {
                                         const float& posit_kernel_threshold, \
                                         const float& posit_threshold_to_ignore, \
                                         const float& posit_damping_factor, \
-                                        const unsigned int& triangulation_window) {
+                                        const unsigned int& triangulation_window, \
+                                        const float& parallax_threshold, \
+                                        const float& new_landmark_threshold) {
 
         // If we have no more measurement to integrate, return error
         if(this->reaminingMeasurements() == 0) return false;
@@ -144,19 +146,26 @@ namespace SLucAM {
         // Create the association vector points<->landmark by using the
         // matched points for which we already have a 3D point prediction
         // in the first measurement
+        // In the meanwhile compute the vector of common landmarks ids
         std::vector<std::pair<unsigned int, unsigned int>> points_associations;
+        std::vector<unsigned int> common_landmarks_ids;
         unsigned int current_3d_point_idx;
+        points_associations.reserve(n_matches); 
+        common_landmarks_ids.reserve(n_matches);
         for(unsigned int i=0; i<n_matches; ++i) {
             current_3d_point_idx = \
                 last_keyframe.point2Landmark(matches[i].queryIdx);
             if(current_3d_point_idx != -1) {
                 points_associations.emplace_back(matches[i].trainIdx, \
                                                 current_3d_point_idx);
+                common_landmarks_ids.emplace_back(current_3d_point_idx);
             }
         }
+        points_associations.shrink_to_fit(); 
+        common_landmarks_ids.shrink_to_fit();
 
         // Predict the new pose (use previous pose as initial guess)
-        const cv::Mat& pose_1 = this->_poses[this->_poses.size()-1];
+        const cv::Mat& pose_1 = this->_poses[this->_keyframes.back().getMeasIdx()];
         cv::Mat predicted_pose = pose_1.clone();
         perform_Posit(predicted_pose, meas2, \
                         points_associations, \
@@ -166,17 +175,22 @@ namespace SLucAM {
                         posit_threshold_to_ignore, \
                         posit_damping_factor);
         
-        // Add the new pose observed and use it as keyframe
-        // TODO: determine if it must be used as keyframe or not
-        // (that is when the parallax is sufficient for triangulation ?)
+        // Compute the parallax between the two poses
+        float parallax = computeParallax(pose_1, predicted_pose, \
+                            this->_landmarks, common_landmarks_ids);
+                
+        // Add the new pose observed and use it as keyframe if we have enough 
+        // parallax
         this->_poses.emplace_back(predicted_pose);
-        addKeyFrame(this->_next_measurement_idx-1, this->_poses.size()-1, \
-                    points_associations, this->_keyframes.size()-1);  
+        if(parallax > parallax_threshold) { 
+            addKeyFrame(this->_next_measurement_idx-1, this->_poses.size()-1, \
+                    points_associations, this->_keyframes.size()-1);
+        }
 
-        // If requested add new landmarks triangulating new matches 
-        // between the last integrated keyframe and the last n 
-        // (specified by triangulation_window) keyframe
-        if(triangulate_new_points) {
+        // If requested and enough parallax add new landmarks triangulating 
+        // new matches between the last integrated keyframe and the last n 
+        // (specified by triangulation_window) keyframes
+        if(triangulate_new_points && (parallax > parallax_threshold) ) {
             
             triangulateNewPoints(this->_keyframes, \
                                 this->_landmarks, \
@@ -184,7 +198,8 @@ namespace SLucAM {
                                 this->_poses, \
                                 matcher, \
                                 this->_K, \
-                                triangulation_window);
+                                triangulation_window, \
+                                new_landmark_threshold);
 
         }
 
@@ -251,9 +266,6 @@ namespace SLucAM {
                 State::buildLinearSystemPoses(this->_poses, this->_keyframes, \
                                         H, b, chi_stats_pose[iter], \
                                         kernel_threshold_pose);
-            
-            cout << n_inliers_projection[iter] << endl;
-            cout << n_inliers_pose[iter] << endl;
 
             // Damping of the H matrix
             H += DampingMatrix;
@@ -333,6 +345,70 @@ namespace SLucAM {
             this->_landmarks[i].y += dx.at<float>((real_idx+1)-6, 0);
             this->_landmarks[i].z += dx.at<float>((real_idx+2)-6, 0);
         }
+
+    }
+
+
+
+    /*
+    * Given two poses and a list of 3D points seen in common between them, this function 
+    * computes the parallax between the two poses.
+    * Inputs:
+    *   pose1/pose2
+    *   landmarks: the list of 3D points contained in the state
+    *   common_landmarks_idx: the list of predicted 3D points ids that are seen in common between
+    *       the two poses
+    * Outputs:
+    *   parallax
+    */
+    float State::computeParallax(const cv::Mat& pose1, const cv::Mat& pose2, \
+                                const std::vector<cv::Point3f>& landmarks, \
+                                const std::vector<unsigned int>& common_landmarks_ids) {
+        
+        // Initialization
+        const unsigned int n_points = common_landmarks_ids.size();
+        std::vector<float> parallaxesCos;
+        cv::Mat normal1 = cv::Mat::zeros(3,1,CV_32F);
+        cv::Mat normal2 = cv::Mat::zeros(3,1,CV_32F);
+        float dist1, dist2;
+
+        // Compute the origin of the pose2 w.r.t. pose1
+        const cv::Mat pose2_wrt_pose1 = invert_transformation_matrix(pose1)*pose2;
+        const cv::Mat O2 = pose2_wrt_pose1.rowRange(0,3).colRange(0,3) * \
+                            pose2_wrt_pose1.rowRange(0,3).col(3);
+
+        // For each point
+        parallaxesCos.reserve(n_points);
+        for(unsigned int i=0; i<n_points; ++i) {
+
+            // Take the current 3D point
+            const cv::Point3f& current_point = landmarks[common_landmarks_ids[i]];
+
+            // Compute the normal origin-point for pose1 (assumed at the origin)
+            normal1.at<float>(0,0) = current_point.x;
+            normal1.at<float>(1,0) = current_point.y;
+            normal1.at<float>(2,0) = current_point.z;
+
+            // Compute the normal origin-point for pose2
+            normal2.at<float>(0,0) = current_point.x - O2.at<float>(0,0);
+            normal2.at<float>(1,0) = current_point.y - O2.at<float>(1,0);
+            normal2.at<float>(2,0) = current_point.z - O2.at<float>(2,0);
+
+            // Compute the distances pose-point
+            dist1 = cv::norm(normal1);
+            dist2 = cv::norm(normal2);
+
+            // Compute the parallax cosine
+            parallaxesCos.emplace_back( normal1.dot(normal2)/(dist1*dist2) );
+
+        }
+        parallaxesCos.shrink_to_fit();
+
+        // Get the max parallax cosine and use it to compute the parallax
+        std::sort(parallaxesCos.begin(), parallaxesCos.end());
+        if(parallaxesCos.back() < 0.99998)
+            return std::acos(parallaxesCos.back())*180 / CV_PI;
+        return 0;   // we cannot compute acos
 
     }
 

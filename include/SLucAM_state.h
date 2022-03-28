@@ -51,7 +51,7 @@ namespace SLucAM {
         }
 
         /*
-        * Givena point, returns the corresponding landmark. If no association
+        * Given a point, returns the corresponding landmark. If no association
         * for such point is present, return -1.
         */
         const unsigned int point2Landmark(const unsigned int& point_idx) const {
@@ -136,7 +136,9 @@ namespace SLucAM {
                                     const float& posit_kernel_threshold=1000, \
                                     const float& posit_threshold_to_ignore=5000, \
                                     const float& posit_damping_factor=1, \
-                                    const unsigned int& triangulation_window=6);
+                                    const unsigned int& triangulation_window=6, \
+                                    const float& parallax_threshold=1.0, \
+                                    const float& new_landmark_threshold=0.01);
         
         void performBundleAdjustment(const float& n_iterations, \
                                     const float& kernel_threshold_proj, \
@@ -174,6 +176,10 @@ namespace SLucAM {
 
         void boxPlus(cv::Mat& dx);
 
+        static float computeParallax(const cv::Mat& pose1, const cv::Mat& pose2, \
+                                    const std::vector<cv::Point3f>& landmarks, \
+                                    const std::vector<unsigned int>& common_landmarks_ids);
+
         static void triangulateNewPoints(std::vector<Keyframe>& keyframes, \
                                         std::vector<cv::Point3f>& landmarks, \
                                         const std::vector<Measurement>& measurements, \
@@ -181,7 +187,7 @@ namespace SLucAM {
                                         Matcher& matcher, \
                                         const cv::Mat& K, \
                                         const unsigned int& triangulation_window, \
-                                        const float& new_landmark_threshold=1); // TODO: detrmine a good default value for this threshold
+                                        const float& new_landmark_threshold);
 
         static void associateNewLandmarks(const std::vector<cv::Point3f>& predicted_landmarks, \
                                         const std::vector<cv::DMatch>& matches, \
