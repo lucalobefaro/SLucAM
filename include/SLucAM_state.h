@@ -54,7 +54,7 @@ namespace SLucAM {
         * Given a point, returns the corresponding landmark. If no association
         * for such point is present, return -1.
         */
-        const unsigned int point2Landmark(const unsigned int& point_idx) const {
+        const int point2Landmark(const unsigned int& point_idx) const {
             const unsigned int& n_associations = this->_points_associations.size();
             for(unsigned int i=0; i<n_associations; ++i) {
                 const std::pair<unsigned int, unsigned int>& current_association = \
@@ -76,7 +76,7 @@ namespace SLucAM {
                 new_points_associations.begin(), new_points_associations.end()); 
         }
 
-        void addKeyframeAssociation(const unsigned int& pose_idx){
+        void addKeyframeAssociation(const int& pose_idx){
             this->_keyframes_associations.emplace_back(pose_idx);
         }
 
@@ -152,7 +152,7 @@ namespace SLucAM {
 
         void addKeyFrame(const unsigned int& meas_idx, const unsigned int& pose_idx, \
                         std::vector<std::pair<unsigned int, unsigned int>>& _points_associations, \
-                        const unsigned int& observer_keyframe_idx);
+                        const int& observer_keyframe_idx);
 
         const cv::Mat& getCameraMatrix() const \
             {return this->_K;};

@@ -366,13 +366,13 @@ namespace SLucAM {
     * and return a pair:
     *   <idx of the nearest point to p in c, distance>
     */
-    std::pair<unsigned int, float> nearest_3d_point(\
+    std::pair<int, float> nearest_3d_point(\
             const cv::Point3f& p, const std::vector<cv::Point3f>& c) {
 
         // Initialization
         const unsigned int& n_points = c.size();
         float current_distance;
-        std::pair<unsigned int, float> result(-1, std::numeric_limits<float>::max());
+        std::pair<int, float> result(-1, std::numeric_limits<float>::max());
 
         // For each point in the costellation c
         for(unsigned int i=0; i<n_points; ++i) {

@@ -94,8 +94,9 @@ namespace SLucAM {
 
         // Save the predicted pose and use it as new keyframe
         this->_poses.emplace_back(predicted_pose);
-        addKeyFrame(this->_next_measurement_idx-1, 1, meas2_points_associations, 0);
-
+        addKeyFrame(this->_next_measurement_idx-1, this->_poses.size()-1, \
+                    meas2_points_associations, this->_keyframes.size()-1);
+        
         return true;
 
     }
@@ -149,7 +150,7 @@ namespace SLucAM {
         // In the meanwhile compute the vector of common landmarks ids
         std::vector<std::pair<unsigned int, unsigned int>> points_associations;
         std::vector<unsigned int> common_landmarks_ids;
-        unsigned int current_3d_point_idx;
+        int current_3d_point_idx;
         points_associations.reserve(n_matches); 
         common_landmarks_ids.reserve(n_matches);
         for(unsigned int i=0; i<n_matches; ++i) {
@@ -187,7 +188,7 @@ namespace SLucAM {
                     points_associations, this->_keyframes.size()-1);
         }
 
-        // If requested and enough parallax add new landmarks triangulating 
+        // If requested and enought parallax add new landmarks triangulating 
         // new matches between the last integrated keyframe and the last n 
         // (specified by triangulation_window) keyframes
         if(triangulate_new_points && (parallax > parallax_threshold) ) {
@@ -299,7 +300,7 @@ namespace SLucAM {
     */
     void State::addKeyFrame(const unsigned int& meas_idx, const unsigned int& pose_idx, \
                             std::vector<std::pair<unsigned int, unsigned int>>& points_associations, \
-                            const unsigned int& observer_keyframe_idx) {
+                            const int& observer_keyframe_idx) {
         
         // Initialization
         const unsigned int n_points_meas = this->_measurements[meas_idx].getPoints().size();
@@ -466,8 +467,8 @@ namespace SLucAM {
                 // Take references to the two points in the current match
                 const unsigned int& p1 = matches[match_idx].queryIdx;
                 const unsigned int& p2 = matches[match_idx].trainIdx;
-                const unsigned int& p1_3dpoint_idx = current_keyframe.point2Landmark(p1);
-                const unsigned int& p2_3dpoint_idx = current_keyframe.point2Landmark(p2);
+                const int& p1_3dpoint_idx = current_keyframe.point2Landmark(p1);
+                const int& p2_3dpoint_idx = current_keyframe.point2Landmark(p2);
 
                 // Check if we have already a 3D point associated to p1
                 if(p1_3dpoint_idx == -1) {
@@ -484,6 +485,7 @@ namespace SLucAM {
                 } else {
 
                     // If we do not have a 3D point associated to p2, add that association
+                    // for p1
                     if(p2_3dpoint_idx == -1) {
                         last_keyframe.addPointAssociation(p2, p1_3dpoint_idx);
                     }
@@ -572,7 +574,7 @@ namespace SLucAM {
             if(filter_near_points) {
 
                 // Compute the nearest point
-                const std::pair<unsigned int, float> nearest_distance = \
+                const std::pair<int, float> nearest_distance = \
                     nearest_3d_point(current_point, landmarks);
                 
                 // If the nearest point is under a threshold
@@ -1767,7 +1769,7 @@ namespace SLucAM {
     * Inputs:
     *   pose_1: the observing robot pose (4x4 homogeneous matrix)
     *   pose_2: the observed robot pose (4x4 homogeneous matrix)
-    *   pose2_wrt_pose1: the relative transform measured between pose-1 
+    *   pose2_wrt_pose1: the relative transform measured between pose_1 
     *                       and pose_2
     *   J_1: 12x6 derivative w.r.t the error and a perturbation of the
     *           first pose (we do not compute it explicitly, it is -J_2)

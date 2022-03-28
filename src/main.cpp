@@ -96,7 +96,7 @@ int main() {
                                             n_iters_POSIT, \
                                             kernel_threshold_POSIT, \
                                             inliers_threshold_POSIT, \
-                                            damping_factor)){
+                                            damping_factor)) {
             cout << "ERROR: no more measurement to integrate" << endl;
             return 1;
         }
@@ -149,7 +149,12 @@ int main() {
     for(unsigned int i=0; i<state.getKeyframes().size(); ++i) {
         cout << "#" << i << ", MEAS: " << state.getKeyframes()[i].getMeasIdx() \
             << ", POSE: " << state.getKeyframes()[i].getMeasIdx() \
-            << ", #POINTS: " << state.getKeyframes()[i].getPointsAssociations().size() << endl;
+            << ", OBSERVED LANDMARKS:[";
+            for(unsigned int j=0; j< state.getKeyframes()[i].getKeyframesAssociations().size(); ++j) {
+                cout << " " << state.getKeyframes()[i].getKeyframesAssociations()[j];
+            }
+            cout << " ], #PREDICTED POINTS: " << state.getKeyframes()[i].getPointsAssociations().size() \
+            << "/" << state.getMeasurements()[state.getKeyframes()[i].getMeasIdx()].getPoints().size() << endl;
     }
 
     /*

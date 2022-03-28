@@ -34,7 +34,7 @@ namespace SLucAM {
     cv::Mat invert_transformation_matrix(const cv::Mat& T_matrix);
     void quaternion_to_matrix(const cv::Mat& quaternion, cv::Mat& R);
     void matrix_to_quaternion(cv::Mat& R, cv::Mat& quaternion);
-    std::pair<unsigned int, float> nearest_3d_point(\
+    std::pair<int, float> nearest_3d_point(\
             const cv::Point3f& p, const std::vector<cv::Point3f>& c);
 } // namespace SLucAM
 
