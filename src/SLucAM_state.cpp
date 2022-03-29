@@ -202,7 +202,8 @@ namespace SLucAM {
                                     matcher, \
                                     this->_K, \
                                     triangulation_window, \
-                                    new_landmark_threshold);
+                                    new_landmark_threshold, \
+                                    parallax_threshold);
 
             }
 
@@ -433,7 +434,8 @@ namespace SLucAM {
                                     Matcher& matcher, \
                                     const cv::Mat& K, \
                                     const unsigned int& triangulation_window, \
-                                    const float& new_landmark_threshold) {
+                                    const float& new_landmark_threshold, \
+                                    const float& parallax_threshold) {
         
         // Initialization
         const unsigned int& n_keyframes = keyframes.size()-1;
@@ -516,25 +518,29 @@ namespace SLucAM {
             // Compute the parallax
             float parallax = computeParallax(pose1, pose2, \
                                 landmarks, common_landmarks_ids);
-            cout << parallax << endl;
+            
 
-            // Triangulate new points
-            std::vector<cv::Point3f> triangulated_points;
-            const cv::Mat pose_2_wrt_pose_1 = invert_transformation_matrix(pose1)*pose2;
-            triangulate_points(meas1.getPoints(), meas2.getPoints(), \
-                                matches, matches_filter, \
-                                pose_2_wrt_pose_1, K, \
-                                triangulated_points);
-                        
-            // Add new triangulated points to the state
-            // (in landmarks vector and in corresponding keyframes)
-            std::vector<std::pair<unsigned int, unsigned int>> new_points_associations1;
-            std::vector<std::pair<unsigned int, unsigned int>> new_points_associations2;
-            associateNewLandmarks(triangulated_points, matches, matches_filter, \
-                                landmarks, new_points_associations1, \
-                                new_points_associations2, true, new_landmark_threshold);
-            current_keyframe.addPointsAssociations(new_points_associations1);
-            last_keyframe.addPointsAssociations(new_points_associations2);
+            // If we have enough parallax
+            if(parallax > parallax_threshold) {
+
+                // Triangulate new points
+                std::vector<cv::Point3f> triangulated_points;
+                const cv::Mat pose_2_wrt_pose_1 = invert_transformation_matrix(pose1)*pose2;
+                triangulate_points(meas1.getPoints(), meas2.getPoints(), \
+                                    matches, matches_filter, \
+                                    pose_2_wrt_pose_1, K, \
+                                    triangulated_points);
+                            
+                // Add new triangulated points to the state
+                // (in landmarks vector and in corresponding keyframes)
+                std::vector<std::pair<unsigned int, unsigned int>> new_points_associations1;
+                std::vector<std::pair<unsigned int, unsigned int>> new_points_associations2;
+                associateNewLandmarks(triangulated_points, matches, matches_filter, \
+                                    landmarks, new_points_associations1, \
+                                    new_points_associations2, true, new_landmark_threshold);
+                current_keyframe.addPointsAssociations(new_points_associations1);
+                last_keyframe.addPointsAssociations(new_points_associations2);
+            }
 
         }
 

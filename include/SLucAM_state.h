@@ -187,7 +187,8 @@ namespace SLucAM {
                                         Matcher& matcher, \
                                         const cv::Mat& K, \
                                         const unsigned int& triangulation_window, \
-                                        const float& new_landmark_threshold);
+                                        const float& new_landmark_threshold, \
+                                        const float& parallax_threshold);
 
         static void associateNewLandmarks(const std::vector<cv::Point3f>& predicted_landmarks, \
                                         const std::vector<cv::DMatch>& matches, \
