@@ -140,7 +140,9 @@ namespace SLucAM {
                                     const float& parallax_threshold=1.0, \
                                     const float& new_landmark_threshold=0.1);
         
-        void performBundleAdjustment(const float& n_iterations, \
+        void performTotalBA(const unsigned int& n_iters);
+        
+        void performBundleAdjustmentOld(const float& n_iterations, \
                                     const float& kernel_threshold_proj, \
                                     const float& threshold_to_ignore_proj, \
                                     const float& kernel_threshold_pose, \

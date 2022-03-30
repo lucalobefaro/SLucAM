@@ -18,4 +18,5 @@ add_executable(SLucAM main.cpp)
 target_link_libraries(SLucAM
 SLucAM_library
 ${OpenCV_LIBS}
-${EIGEN3_LIBS})
+${EIGEN3_LIBS}
+${G2O_LIBS})

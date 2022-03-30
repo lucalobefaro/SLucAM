@@ -11,7 +11,10 @@
 #include <SLucAM_geometry.h>
 #include <Eigen/Core>
 #include <Eigen/Cholesky>
-
+#include <g2o/core/block_solver.h>
+#include <g2o/solvers/dense/linear_solver_dense.h>
+#include <g2o/core/optimization_algorithm_levenberg.h>
+#include <g2o/core/robust_kernel_impl.h>
 
 // TODO: delete this
 #include <iostream>
@@ -218,6 +221,113 @@ namespace SLucAM {
 
 
     /*
+    * Function that performs total Bundle Adjustment using g2o.
+    */
+    void State::performTotalBA(const unsigned int& n_iters) {
+
+        // Initialization
+        unsigned int vertex_id = 0;
+        const unsigned int n_keyframes = this->_keyframes.size();
+        const unsigned int n_landmarks = this->_landmarks.size();
+
+        // Create optimizer
+        g2o::SparseOptimizer optimizer;
+        optimizer.setVerbose(false);
+        std::unique_ptr<g2o::BlockSolver_6_3::LinearSolverType> linearSolver;
+        linearSolver= g2o::make_unique<g2o::LinearSolverDense<g2o::BlockSolver_6_3::PoseMatrixType>>();
+        g2o::OptimizationAlgorithmLevenberg* solver =
+            new g2o::OptimizationAlgorithmLevenberg(
+                g2o::make_unique<g2o::BlockSolver_6_3>(std::move(linearSolver)));
+        optimizer.setAlgorithm(solver);
+
+        // Set camera parameters
+        g2o::CameraParameters* cam_params = \
+                new g2o::CameraParameters(this->_K.at<float>(0,0), \
+                        g2o::Vector2(this->_K.at<float>(0,2), this->_K.at<float>(1,2)), \
+                        0.);
+        cam_params->setId(0);
+        optimizer.addParameter(cam_params);
+
+        // --- Set landmarks vertices ---
+        for(unsigned int i=0; i<n_landmarks; ++i) {
+
+            // Get the reference to the current landmark
+            const cv::Point3f& current_landmark = this->_landmarks[i];
+
+            // Create the new vertex
+            g2o::VertexPointXYZ* vl = new g2o::VertexPointXYZ();
+            vl->setId(vertex_id);
+            vl->setMarginalized(true);
+            vl->setEstimate(point_3d_to_vector_3d(current_landmark));
+            optimizer.addVertex(vl);
+
+            // Increment vertex_id
+            ++vertex_id;
+
+        }
+
+        // --- Set Keyframes vertices ---
+        for(unsigned int i=0; i<n_keyframes; ++i) {
+
+            // Get the reference to the current keyframe, its pose and its measurement
+            const Keyframe& current_keyframe = this->_keyframes[i];
+            const cv::Mat& current_pose = this->_poses[current_keyframe.getPoseIdx()];
+            const Measurement& current_meas = this->_measurements[current_keyframe.getMeasIdx()];
+
+            // Create the new vertex
+            g2o::VertexSE3Expmap* vk = new g2o::VertexSE3Expmap();
+            vk->setEstimate(transformation_matrix_to_SE3Quat(current_pose));
+            vk->setId(vertex_id);
+            vk->setFixed(i==0);
+            optimizer.addVertex(vk);
+
+            // Increment vertex_id
+            ++vertex_id;
+
+            // --- Set edges keyframe -> landmark ---
+            const std::vector<std::pair<unsigned int, unsigned int>>& current_points_associations = \
+                    current_keyframe.getPointsAssociations();
+            const unsigned int n_associations = current_points_associations.size();
+            
+            for(unsigned int association_idx=0; association_idx<n_associations; ++association_idx) {
+
+                // Take references for this association
+                const std::pair<unsigned int, unsigned int>& current_association = \
+                        current_points_associations[association_idx];
+                const unsigned int& point_2d_idx = current_association.first;
+                const unsigned int& landmark_idx = current_association.second;
+
+                // Take the measured point of this association
+                const cv::KeyPoint& z = current_meas.getPoints()[point_2d_idx];
+
+                // Create the edge
+                g2o::EdgeProjectXYZ2UV* e = new g2o::EdgeProjectXYZ2UV();
+                e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(\
+                    static_cast<g2o::VertexPointXYZ*>( optimizer.vertex(landmark_idx) ) ));
+                e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(vk));
+                e->setMeasurement(point_2d_to_vector_2d(z));
+                e->information() = Eigen::Matrix2d::Identity();
+                g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+                e->setRobustKernel(rk);     // Robust kernel
+                e->setParameterId(0, 0);    // Camera parameters
+                optimizer.addEdge(e);
+
+            }
+        }
+        
+        // Optimize
+        optimizer.initializeOptimization();
+        optimizer.setVerbose(true);
+        optimizer.optimize(n_iters);
+
+        // Recover optimized data
+        // TODO
+
+    }
+
+
+
+    /*
     * Implementation of the Bundle Adjustment optimization with Least-Squares
     * method.
     * Inputs:
@@ -227,7 +337,7 @@ namespace SLucAM {
     *   threshold_to_ignore: error threshold that determine if an outlier is 
     *           too outlier to be considered
     */
-    void State::performBundleAdjustment(const float& n_iterations, \
+    void State::performBundleAdjustmentOld(const float& n_iterations, \
                                         const float& kernel_threshold_proj, \
                                         const float& threshold_to_ignore_proj, \
                                         const float& kernel_threshold_pose, \

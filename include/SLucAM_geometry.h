@@ -13,6 +13,7 @@
 // -----------------------------------------------------------------------------
 #include <opencv2/features2d.hpp>
 #include <SLucAM_state.h>
+#include <g2o/types/sba/types_six_dof_expmap.h>
 
 
 
@@ -32,10 +33,21 @@ namespace SLucAM {
     void apply_perturbation_Tmatrix(const cv::Mat& perturbation, \
                                     cv::Mat& T_matrix, const unsigned int& starting_idx);
     cv::Mat invert_transformation_matrix(const cv::Mat& T_matrix);
-    void quaternion_to_matrix(const cv::Mat& quaternion, cv::Mat& R);
-    void matrix_to_quaternion(cv::Mat& R, cv::Mat& quaternion);
     std::pair<int, float> nearest_3d_point(\
             const cv::Point3f& p, const std::vector<cv::Point3f>& c);
+} // namespace SLucAM
+
+
+
+// -----------------------------------------------------------------------------
+// Representation conversion functions
+// -----------------------------------------------------------------------------
+namespace SLucAM {
+    void quaternion_to_matrix(const cv::Mat& quaternion, cv::Mat& R);
+    void matrix_to_quaternion(cv::Mat& R, cv::Mat& quaternion);
+    g2o::SE3Quat transformation_matrix_to_SE3Quat(const cv::Mat& T_matrix);
+    Eigen::Matrix<double,3,1> point_3d_to_vector_3d(const cv::Point3f& point);
+    Eigen::Matrix<double,2,1> point_2d_to_vector_2d(const cv::KeyPoint& point);
 } // namespace SLucAM
 
 

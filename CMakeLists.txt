@@ -15,6 +15,15 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
+### g2o ###
+add_definitions(-DG2O_USE_VENDORED_CERES)
+list(APPEND G2O_LIBS
+    ${PROJECT_SOURCE_DIR}/external/g2o/lib/libg2o_stuff.so
+    ${PROJECT_SOURCE_DIR}/external/g2o/lib/libg2o_core.so
+    ${PROJECT_SOURCE_DIR}/external/g2o/lib/libg2o_types_sba.so
+    ${PROJECT_SOURCE_DIR}/external/g2o/lib/libg2o_solver_dense.so)
+include_directories(${PROJECT_SOURCE_DIR}/external/g2o)
+
 # Where to put binary and library files
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)

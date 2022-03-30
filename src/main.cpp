@@ -22,6 +22,7 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
+
 using namespace std::chrono;
 using namespace std;
 
@@ -42,7 +43,7 @@ int main() {
     const unsigned int kernel_threshold_POSIT = 1000;
     const float inliers_threshold_POSIT = 5000;
 
-    const unsigned int n_iters_BA = 5;
+    const unsigned int n_iters_BA = 20; //10
     const float kernel_threshold_proj_BA = 100;
     const float inliers_threshold_proj_BA = 500;
     const float kernel_threshold_pose_BA = 10;
@@ -101,16 +102,17 @@ int main() {
             return 1;
         }
     }
+    state.performTotalBA(n_iters_BA);
     //state.performBundleAdjustment(n_iters_BA, \
                                     kernel_threshold_proj_BA, \
                                     inliers_threshold_proj_BA, \
                                     kernel_threshold_pose_BA, \
                                     damping_factor);
     cout << "DONE!" << endl << endl;
+
     
 
-
-    // -----------------------------------------------------------------------------
+    /* -----------------------------------------------------------------------------
     // INTEGRATE NEW MEASUREMENT AND EXPAND MAP
     // -----------------------------------------------------------------------------
     cout << "ESPLORATION STARTED ..." << endl;

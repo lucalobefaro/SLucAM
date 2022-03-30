@@ -293,6 +293,48 @@ namespace SLucAM {
 
 
 
+    /* 
+    * This function takes a 3D point p and a costellation c of points
+    * and return a pair:
+    *   <idx of the nearest point to p in c, distance>
+    */
+    std::pair<int, float> nearest_3d_point(\
+            const cv::Point3f& p, const std::vector<cv::Point3f>& c) {
+
+        // Initialization
+        const unsigned int& n_points = c.size();
+        float current_distance;
+        std::pair<int, float> result(-1, std::numeric_limits<float>::max());
+
+        // For each point in the costellation c
+        for(unsigned int i=0; i<n_points; ++i) {
+            
+            // Take the current point
+            const cv::Point3f& p2 = c[i];
+
+            // Compute distance
+            current_distance = cv::norm(p-p2);
+
+            // If it is the nearest one so far, save it
+            if(current_distance < result.second) {
+                result.first = i;
+                result.second = current_distance;
+            }
+        }
+
+        return result;
+
+    }
+    
+} // namespace SLucAM
+
+
+
+// -----------------------------------------------------------------------------
+// Representation conversion functions
+// -----------------------------------------------------------------------------
+namespace SLucAM {
+    
     /*
     * This function, given a quaternion represented as a cv::Mat with
     * dim 4x1 and with this structure: [w; x; y; z], returns the
@@ -361,39 +403,47 @@ namespace SLucAM {
 
 
 
-    /* 
-    * This function takes a 3D point p and a costellation c of points
-    * and return a pair:
-    *   <idx of the nearest point to p in c, distance>
+    /*
+    * This function, given a transformation matrix, returns the same matrix
+    * represented as a SE3Quat for g2o.
     */
-    std::pair<int, float> nearest_3d_point(\
-            const cv::Point3f& p, const std::vector<cv::Point3f>& c) {
+    g2o::SE3Quat transformation_matrix_to_SE3Quat(const cv::Mat& T_matrix) {
+        Eigen::Matrix<double,3,3> R;
+        R << T_matrix.at<float>(0,0), T_matrix.at<float>(0,1), T_matrix.at<float>(0,2),
+            T_matrix.at<float>(1,0), T_matrix.at<float>(1,1), T_matrix.at<float>(1,2),
+            T_matrix.at<float>(2,0), T_matrix.at<float>(2,1), T_matrix.at<float>(2,2);
 
-        // Initialization
-        const unsigned int& n_points = c.size();
-        float current_distance;
-        std::pair<int, float> result(-1, std::numeric_limits<float>::max());
+        Eigen::Matrix<double,3,1> t(T_matrix.at<float>(0,3), \
+                                    T_matrix.at<float>(1,3), \
+                                    T_matrix.at<float>(2,3));
 
-        // For each point in the costellation c
-        for(unsigned int i=0; i<n_points; ++i) {
-            
-            // Take the current point
-            const cv::Point3f& p2 = c[i];
-
-            // Compute distance
-            current_distance = cv::norm(p-p2);
-
-            // If it is the nearest one so far, save it
-            if(current_distance < result.second) {
-                result.first = i;
-                result.second = current_distance;
-            }
-        }
-
-        return result;
-
+        return g2o::SE3Quat(R,t);
     }
-    
+
+
+
+    /*
+    * This function, given a Point3f (float) in OpenCv representation, returns the same
+    * point in Eigen Matrix (double) representation: useful for g2o.
+    */
+    Eigen::Matrix<double,3,1> point_3d_to_vector_3d(const cv::Point3f& point) {
+        Eigen::Matrix<double,3,1> v;
+        v << point.x, point.x, point.z;
+        return v;
+    }
+
+
+
+    /*
+    * This function, given a Keypoint (float) in OpenCv representation, returns the same
+    * point in Eigen Matrix (double) representation: useful for g2o.
+    */
+    Eigen::Matrix<double,2,1> point_2d_to_vector_2d(const cv::KeyPoint& point) {
+        Eigen::Matrix<double,2,1> v;
+        v << point.pt.x, point.pt.x;
+        return v;
+    }
+
 } // namespace SLucAM
 
 
