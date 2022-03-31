@@ -141,12 +141,6 @@ namespace SLucAM {
                                     const float& new_landmark_threshold=0.1);
         
         void performTotalBA(const unsigned int& n_iters);
-        
-        void performBundleAdjustmentOld(const float& n_iterations, \
-                                    const float& kernel_threshold_proj, \
-                                    const float& threshold_to_ignore_proj, \
-                                    const float& kernel_threshold_pose, \
-                                    const float& damping_factor);
 
         const unsigned int reaminingMeasurements() const {
             return (this->_measurements.size() - this->_next_measurement_idx);
@@ -176,8 +170,6 @@ namespace SLucAM {
     
     private:
 
-        void boxPlus(cv::Mat& dx);
-
         static float computeParallax(const cv::Mat& pose1, const cv::Mat& pose2, \
                                     const std::vector<cv::Point3f>& landmarks, \
                                     const std::vector<unsigned int>& common_landmarks_ids);
@@ -203,46 +195,6 @@ namespace SLucAM {
                                         const bool& filter_near_points, \
                                         const float& new_landmark_threshold);
     
-        static unsigned int buildLinearSystemProjections(\
-                        const std::vector<cv::Mat>& poses, \
-                        const std::vector<cv::Point3f>& landmarks, \
-                        const std::vector<Measurement>& measurements, \
-                        const std::vector<Keyframe>& keyframes, \
-                        const cv::Mat& K, \
-                        cv::Mat& H, cv::Mat& b, \
-                        float& chi_tot, \
-                        const float& kernel_threshold, \
-                        const float& threshold_to_ignore, \
-                        const float& img_rows, \
-                        const float& img_cols);
-        
-        static unsigned int buildLinearSystemPoses(\
-                        const std::vector<cv::Mat>& poses, \
-                        const std::vector<Keyframe>& keyframes, \
-                        cv::Mat& H, cv::Mat& b, \
-                        float& chi_tot, \
-                        const float& kernel_threshold);
-
-        static bool computeProjectionErrorAndJacobian(const cv::Mat& pose, \
-                        const cv::Point3f& landmark_pose, \
-                        const cv::KeyPoint& img_point, const cv::Mat& K, \
-                        cv::Mat& J_pose, cv::Mat& J_landmark, cv::Mat& error, \
-                        const float& img_rows, const float& img_cols);
-      
-        static void computePoseErrorAndJacobian(const cv::Mat& pose_1, \
-                        const cv::Mat& pose_2, \
-                        const cv::Mat& pose2_wrt_pose1, \
-                        cv::Mat& J_2, cv::Mat& error);
-            
-        static inline unsigned int poseMatrixIdx(const unsigned int&  idx) {
-            return idx*6;
-        };
-
-        static inline unsigned int landmarkMatrixIdx(const unsigned int&  idx, \
-                                                    const unsigned int& n_poses) {
-            return (n_poses*6) + (idx*3);
-        };
-
         // Camera matrix
         cv::Mat _K;
 

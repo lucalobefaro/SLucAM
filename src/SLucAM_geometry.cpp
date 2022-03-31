@@ -423,7 +423,22 @@ namespace SLucAM {
 
 
     /*
-    * This function, given a Point3f (float) in OpenCv representation, returns the same
+    * This function, given a SE3Quat pose, returns the same matrix represented
+    * as a OpenCV transformation matrix.
+    */
+    cv::Mat SE3Quat_to_transformation_matrix(const g2o::SE3Quat& se3quat) {
+        cv::Mat T_matrix = cv::Mat::zeros(4,4,CV_32F);
+        Eigen::Matrix<double,4,4> eigen_T_matrix = se3quat.to_homogeneous_matrix();
+        for(int i=0;i<4;i++)
+            for(int j=0; j<4; j++)
+                T_matrix.at<float>(i,j) = eigen_T_matrix(i,j);
+        return T_matrix;
+    }
+
+
+
+    /*
+    * This function, given a Point3f (float) in OpenCV representation, returns the same
     * point in Eigen Matrix (double) representation: useful for g2o.
     */
     Eigen::Matrix<double,3,1> point_3d_to_vector_3d(const cv::Point3f& point) {
@@ -435,7 +450,18 @@ namespace SLucAM {
 
 
     /*
-    * This function, given a Keypoint (float) in OpenCv representation, returns the same
+    * This function, given a Eigen 3x1 vector (double), returns the same vector
+    * as a 3d point in OpenCV representation (Point3f).
+    */
+    cv::Point3f vector_3d_to_point_3d(const Eigen::Matrix<double,3,1>& vector) {
+        return cv::Point3f(vector(0), vector(1), vector(2));
+    }
+
+
+
+
+    /*
+    * This function, given a Keypoint (float) in OpenCV representation, returns the same
     * point in Eigen Matrix (double) representation: useful for g2o.
     */
     Eigen::Matrix<double,2,1> point_2d_to_vector_2d(const cv::KeyPoint& point) {

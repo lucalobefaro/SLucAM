@@ -46,7 +46,9 @@ namespace SLucAM {
     void quaternion_to_matrix(const cv::Mat& quaternion, cv::Mat& R);
     void matrix_to_quaternion(cv::Mat& R, cv::Mat& quaternion);
     g2o::SE3Quat transformation_matrix_to_SE3Quat(const cv::Mat& T_matrix);
+    cv::Mat SE3Quat_to_transformation_matrix(const g2o::SE3Quat& se3quat);
     Eigen::Matrix<double,3,1> point_3d_to_vector_3d(const cv::Point3f& point);
+    cv::Point3f vector_3d_to_point_3d(const Eigen::Matrix<double,3,1>& vector);
     Eigen::Matrix<double,2,1> point_2d_to_vector_2d(const cv::KeyPoint& point);
 } // namespace SLucAM
 
