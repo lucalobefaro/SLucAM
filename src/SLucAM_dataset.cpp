@@ -495,7 +495,7 @@ namespace SLucAM {
             // Take the prediction
             const cv::Point3f& predicted_point = idx_prediction.second;
 
-            // Compute ratios, avoiding zeros division
+            /* Compute ratios, avoiding zeros division
             if(predicted_point.x != 0) {
                 ratio_x = gt_point.x/predicted_point.x;
             } else {
@@ -517,6 +517,13 @@ namespace SLucAM {
             d2 = ratio_x-ratio_z;
             d3 = ratio_y-ratio_z;
             error += (sqrt(d1*d1) + sqrt(d2*d2) + sqrt(d3*d3))/3.0;
+            */
+            
+            // Compute the distance between the predicted point and the gt
+            const float dx = predicted_point.x-gt_point.x;
+            const float dy = predicted_point.y-gt_point.y;
+            const float dz = predicted_point.z-gt_point.z;
+            error += sqrt((dx*dx)+(dy*dy)+(dz*dz));
             
         }
 

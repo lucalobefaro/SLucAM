@@ -40,8 +40,8 @@ int main() {
 
     const unsigned int how_many_meas_optimization = 4;
     const unsigned int n_iters_POSIT = 50;
-    const unsigned int kernel_threshold_POSIT = 1000;
-    const float inliers_threshold_POSIT = 5000;
+    const unsigned int kernel_threshold_POSIT = 5000;   //1000
+    const float inliers_threshold_POSIT = 10000;        //5000
 
     const unsigned int n_iters_BA = 10;
     const float kernel_threshold_proj_BA = 100;
@@ -102,12 +102,12 @@ int main() {
             return 1;
         }
     }
-    //state.performTotalBA(n_iters_BA);
+    state.performTotalBA(n_iters_BA);
     cout << "DONE!" << endl << endl;
 
-    
 
-    /* -----------------------------------------------------------------------------
+    /*
+    // -----------------------------------------------------------------------------
     // INTEGRATE NEW MEASUREMENT AND EXPAND MAP
     // -----------------------------------------------------------------------------
     cout << "ESPLORATION STARTED ..." << endl;
@@ -121,7 +121,6 @@ int main() {
     }
     cout << "DONE!" << endl << endl;
     */
-
 
     // -----------------------------------------------------------------------------
     // TEST
@@ -143,22 +142,7 @@ int main() {
         << endl << endl;
 
     
-    // --- TEST BA ---
-    state.performTotalBA(n_iters_BA);
-    for(unsigned int i=0; i<n_poses; ++i) {
-        cout << "POSE " << i << endl;
-        cout << state.getPoses()[i] << endl << endl;
-    }
-    cout << "#LANDMARKS PREDICTED: " << state.getLandmarks().size() << endl;
-    cout << "LANDMARKS PREDICTION ERROR: " << SLucAM::test_predicted_points(dataset_folder, \
-                                                        state.getKeyframes(), \
-                                                        state.getLandmarks(), \
-                                                        data_associations) \
-        << endl << endl;
-
-
-
-    /* Test keyframes
+    // Test keyframes
     cout << "#KEYFRAMES: " << state.getKeyframes().size() << endl;
     for(unsigned int i=0; i<state.getKeyframes().size(); ++i) {
         cout << "#" << i << ", MEAS: " << state.getKeyframes()[i].getMeasIdx() \
@@ -169,8 +153,30 @@ int main() {
             }
             cout << " ], #PREDICTED POINTS: " << state.getKeyframes()[i].getPointsAssociations().size() \
             << "/" << state.getMeasurements()[state.getKeyframes()[i].getMeasIdx()].getPoints().size() << endl;
-    }*/
+    }
 
+
+    /* OTHER TEST
+    const unsigned int n_posess = state.getPoses().size();
+    for(unsigned int i=0; i<n_posess; ++i) {
+        cout << "POSE " << i << endl;
+        cout << state.getPoses()[i] << endl << endl;
+    }
+    const unsigned int n_keyframes = state.getKeyframes().size();
+    for(unsigned int i=0; i<n_keyframes; ++i) {
+        cout << "KEYFRAME " << i << endl;
+        cout << state.getKeyframes()[i] << endl << endl;
+    }
+    const unsigned int n_landmarks = state.getLandmarks().size();
+    cout << "LANDMARKS:" << endl;
+    for(unsigned int i=0; i<n_landmarks; ++i) {
+        cout << "\tID: " << i << " " <<\
+            state.getLandmarks()[i].x << " " <<\
+            state.getLandmarks()[i].y << " " <<\
+            state.getLandmarks()[i].z << " " << endl;
+    }
+    // END TEST */
+    
 
     /*
     // HERE THE FUNCTION FOR SPEED TEST

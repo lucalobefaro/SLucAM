@@ -69,7 +69,7 @@ namespace SLucAM {
             current_gt_meas1 = gt_points_meas1[current_p_meas1];
 
             for(unsigned int current_p_meas2=0; \
-                current_p_meas2<n_points_meas1; \
+                current_p_meas2<n_points_meas2; \
                 ++current_p_meas2) {
             
                 // Get the current point grounf truth id

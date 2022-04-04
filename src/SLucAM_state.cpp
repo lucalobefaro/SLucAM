@@ -182,7 +182,7 @@ namespace SLucAM {
         // Compute the parallax between the two poses
         float parallax = computeParallax(pose_1, predicted_pose, \
                             this->_landmarks, common_landmarks_ids);
-
+        
         // Add the new pose
         this->_poses.emplace_back(predicted_pose);
                 
@@ -243,10 +243,10 @@ namespace SLucAM {
         optimizer.setAlgorithm(solver);
 
         // Set camera parameters
+        double focal_length = this->_K.at<float>(0,0);
+        Eigen::Vector2d principal_point(this->_K.at<float>(0,2), this->_K.at<float>(1,2));
         g2o::CameraParameters* cam_params = \
-                new g2o::CameraParameters(this->_K.at<float>(0,0), \
-                        g2o::Vector2(this->_K.at<float>(0,2), this->_K.at<float>(1,2)), \
-                        0.);
+                new g2o::CameraParameters(focal_length, principal_point, 0.);
         cam_params->setId(0);
         optimizer.addParameter(cam_params);
 
@@ -259,8 +259,8 @@ namespace SLucAM {
             // Create the new vertex
             g2o::VertexPointXYZ* vl = new g2o::VertexPointXYZ();
             vl->setId(vertex_id);
-            vl->setMarginalized(true);
             vl->setEstimate(point_3d_to_vector_3d(current_landmark));
+            vl->setMarginalized(true);
             optimizer.addVertex(vl);
 
             // Increment vertex_id
@@ -304,25 +304,26 @@ namespace SLucAM {
 
                 // Create the edge
                 g2o::EdgeProjectXYZ2UV* e = new g2o::EdgeProjectXYZ2UV();
-                e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(\
-                    static_cast<g2o::VertexPointXYZ*>( optimizer.vertex(landmark_idx) ) ));
-                e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(vk));
+                e->setVertex(0, \
+                        dynamic_cast<g2o::VertexPointXYZ*>(optimizer.vertex(landmark_idx)) );
+                e->setVertex(1, \
+                        dynamic_cast<g2o::OptimizableGraph::Vertex*>(vk));
                 e->setMeasurement(point_2d_to_vector_2d(z));
                 e->information() = Eigen::Matrix2d::Identity();
-                g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
-                e->setRobustKernel(rk);     // Robust kernel
-                e->setParameterId(0, 0);    // Camera parameters
+                e->setRobustKernel(new g2o::RobustKernelHuber);
+                e->setParameterId(0, 0);
                 optimizer.addEdge(e);
 
             }
+
         }
-        
+
         // Optimize
         optimizer.initializeOptimization();
-        optimizer.setVerbose(true);
+        optimizer.setVerbose(false);
         optimizer.optimize(n_iters);
 
-        // Recover optimized data
+        // --- Recover optimized data ---
         vertex_id = 0;
 
         // Recover landmarks
@@ -341,6 +342,9 @@ namespace SLucAM {
                     SE3Quat_to_transformation_matrix(current_vertex->estimate());
             ++vertex_id;
         }
+
+        // Clear
+        optimizer.clear();
 
     }
 
@@ -542,6 +546,9 @@ namespace SLucAM {
                                     matches, matches_filter, \
                                     pose_2_wrt_pose_1, K, \
                                     triangulated_points);
+                
+                // Bring the triangulated points in world coordinates
+                from_pose_frame_to_world_frame(pose1, triangulated_points);
                             
                 // Add new triangulated points to the state
                 // (in landmarks vector and in corresponding keyframes)

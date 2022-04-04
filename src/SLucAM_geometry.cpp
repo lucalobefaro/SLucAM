@@ -93,6 +93,7 @@ namespace SLucAM {
     *   X: pose of the camera 2 w.r.t. camera 1
     *   K: camera matrix of the two cameras
     *   triangulated_points: vector where to store the triangulated points
+    *       (expressed w.r.t. camera 1)
     * Outputs:
     *   n_triangulated_points: number of triangulated points
     */
@@ -120,7 +121,7 @@ namespace SLucAM {
         const float& inv_K32 = inv_K.at<float>(2,1);
         const float& inv_K33 = inv_K.at<float>(2,2);
 
-        const cv::Mat inv_X = X.inv();
+        const cv::Mat inv_X = invert_transformation_matrix(X);
         const cv::Mat inv_R_inv_K = inv_X(cv::Rect(0,0,3,3))*inv_K;
         const float& inv_R_inv_K11 = inv_R_inv_K.at<float>(0,0);
         const float& inv_R_inv_K12 = inv_R_inv_K.at<float>(0,1);
@@ -179,6 +180,53 @@ namespace SLucAM {
 
         return n_triangulated_points;
     }
+
+
+
+    /*
+    * Function that, given a set of points in a reference frame defined
+    * by "pose", returns the same points expressed in the world frame
+    * (assumed that pose is expressed in world frame).
+    * Inputs:
+    *   pose: a 4x4 Transformation matrix that represent the reference frame
+    *       in which points are expressed
+    *   points: set of point to transform
+    */
+    void from_pose_frame_to_world_frame(const cv::Mat& pose, \
+                                    std::vector<cv::Point3f>& points) {
+        
+        // Initialization
+        const unsigned int n_points = points.size();
+        const cv::Mat pose_inv = invert_transformation_matrix(pose);
+
+        // Take reference to R
+        const float& R11 = pose_inv.at<float>(0,0);
+        const float& R12 = pose_inv.at<float>(0,1);
+        const float& R13 = pose_inv.at<float>(0,2);
+        const float& R21 = pose_inv.at<float>(1,0);
+        const float& R22 = pose_inv.at<float>(1,1);
+        const float& R23 = pose_inv.at<float>(1,2);
+        const float& R31 = pose_inv.at<float>(2,0);
+        const float& R32 = pose_inv.at<float>(2,1);
+        const float& R33 = pose_inv.at<float>(2,2);
+
+        // Take reference to t
+        const float& tx = pose_inv.at<float>(0,3);
+        const float& ty = pose_inv.at<float>(1,3);
+        const float& tz = pose_inv.at<float>(2,3);
+
+        // Apply the chenge of reference frame (R*p+t, for each p)
+        for(unsigned int i=0; i<n_points; ++i) {
+            const float p_x = points[i].x;
+            const float p_y = points[i].y;
+            const float p_z = points[i].z;
+            points[i].x = (R11*p_x + R12*p_y + R13*p_z) + tx;
+            points[i].y = (R21*p_x + R22*p_y + R23*p_z) + ty;
+            points[i].z = (R31*p_x + R32*p_y + R33*p_z) + tz;
+        }
+
+    }
+
 
 
     /*
@@ -443,7 +491,7 @@ namespace SLucAM {
     */
     Eigen::Matrix<double,3,1> point_3d_to_vector_3d(const cv::Point3f& point) {
         Eigen::Matrix<double,3,1> v;
-        v << point.x, point.x, point.z;
+        v << point.x, point.y, point.z;
         return v;
     }
 
@@ -466,7 +514,7 @@ namespace SLucAM {
     */
     Eigen::Matrix<double,2,1> point_2d_to_vector_2d(const cv::KeyPoint& point) {
         Eigen::Matrix<double,2,1> v;
-        v << point.pt.x, point.pt.x;
+        v << point.pt.x, point.pt.y;
         return v;
     }
 
@@ -589,7 +637,7 @@ namespace SLucAM {
     * This function allows us to obtain the rotation matrix R and the
     * translation vector t between two images, for which we have the 
     * Foundamental Matrix F, composed in a transformation matrix 
-    * X = [R|t]. 
+    * X = [R|t].
     * Inputs:
     *   p_img1/p_img2: points to use in order to understand wich X computed
     *                   triangulates "better"
@@ -640,6 +688,9 @@ namespace SLucAM {
         cv::Mat t;
         u.col(2).copyTo(t);
         t=t/cv::norm(t);
+
+        // Apply a scale to t
+        t/=10.0;
 
         // Evaluate first solution
         X_pred.at<float>(0,0) = R1.at<float>(0,0);
@@ -840,7 +891,7 @@ namespace SLucAM {
     * only such measurements for which the pose of the landmark is already
     * triangulated (so guessed)
     * Inputs:
-    *   guessed_pose: initial guess
+    *   guessed_pose: initial guess (and output)
     *   measurement: the measurement for which we need to predict the pose
     *   points_associations: list of associations 2D point <-> 3D point
     *   landmarks: set of triangulated landmarks

@@ -16,6 +16,7 @@
 #include <SLucAM_measurement.h>
 #include <SLucAM_matcher.h>
 #include <map>
+#include <iostream>
 
 
 
@@ -92,7 +93,29 @@ namespace SLucAM {
         const std::vector<unsigned int>& getKeyframesAssociations() const {
             return this->_keyframes_associations;
         }
-        
+
+        friend std::ostream& operator<< (std::ostream& out, const Keyframe& data) {
+
+            const unsigned int n_points_associations = data._points_associations.size();
+            const unsigned int n_keyframes_associations = data._keyframes_associations.size();
+
+            out << "MEASUREMENT IDX: " << data._meas_idx << std::endl;
+            out << "POSE IDX: " << data._pose_idx << std::endl;
+
+            out << "N. POINTS ASSOCIATED: " << n_points_associations << std::endl;
+            out << "POINTS ASSOCIATION <2d point idx : 3d point idx>: " << std::endl;
+            for(unsigned int i=0; i<n_points_associations; ++i) {
+                out << "\t[" << data._points_associations[i].first << \
+                    " : " << data._points_associations[i].second << "]" << std::endl;
+            }
+            out << "OBSERVED KEYFRAMES IDS: ";
+            for(unsigned int i=0; i<n_keyframes_associations; ++i) {
+                out << "[" << data._keyframes_associations[i] << "] ";
+            }
+            out << std::endl;
+
+            return out;
+        }
 
     private:
 
