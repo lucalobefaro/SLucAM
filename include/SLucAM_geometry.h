@@ -37,6 +37,9 @@ namespace SLucAM {
     cv::Mat invert_transformation_matrix(const cv::Mat& T_matrix);
     std::pair<int, float> nearest_3d_point(\
             const cv::Point3f& p, const std::vector<cv::Point3f>& c);
+    float computeParallax(const cv::Mat& pose1, const cv::Mat& pose2, \
+                            const std::vector<cv::Point3f>& landmarks, \
+                            const std::vector<unsigned int>& common_landmarks_ids);
 } // namespace SLucAM
 
 
@@ -85,16 +88,16 @@ namespace SLucAM {
 // Projective ICP functions
 // -----------------------------------------------------------------------------
 namespace SLucAM {
-    void perform_Posit(cv::Mat& guessed_pose, \
-                        const Measurement& measurement, \
-                        const std::vector<std::pair<unsigned int, \
-                                unsigned int>>& points_associations, \
-                        const std::vector<cv::Point3f>& landmarks, \
-                        const cv::Mat& K, \
-                        const unsigned int& n_iterations, \
-                        const float& kernel_threshold, \
-                        const float& threshold_to_ignore, \
-                        const float& damping_factor);
+    unsigned int perform_Posit(cv::Mat& guessed_pose, \
+                                const Measurement& measurement, \
+                                const std::vector<std::pair<unsigned int, \
+                                        unsigned int>>& points_associations, \
+                                const std::vector<cv::Point3f>& landmarks, \
+                                const cv::Mat& K, \
+                                const unsigned int& n_iterations, \
+                                const float& kernel_threshold, \
+                                const float& threshold_to_ignore, \
+                                const float& damping_factor);
     bool error_and_jacobian_Posit(const cv::Mat& guessed_pose, \
                                 const cv::Point3f& guessed_landmark, \
                                 const cv::KeyPoint& measured_point, \

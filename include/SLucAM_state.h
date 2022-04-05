@@ -191,11 +191,7 @@ namespace SLucAM {
         const std::vector<Keyframe>& getKeyframes() const \
             {return this->_keyframes;};
     
-    private:
-
-        static float computeParallax(const cv::Mat& pose1, const cv::Mat& pose2, \
-                                    const std::vector<cv::Point3f>& landmarks, \
-                                    const std::vector<unsigned int>& common_landmarks_ids);
+    private: 
 
         static void triangulateNewPoints(std::vector<Keyframe>& keyframes, \
                                         std::vector<cv::Point3f>& landmarks, \

@@ -41,24 +41,26 @@ namespace SLucAM {
 // -----------------------------------------------------------------------------
 namespace SLucAM {
     
-    int ransac_foundamental(const std::vector<cv::KeyPoint>& p_img1_normalized, \
+    float ransac_foundamental(const std::vector<cv::KeyPoint>& p_img1_normalized, \
                             const std::vector<cv::KeyPoint>& p_img2_normalized, \
                             const std::vector<cv::KeyPoint>& p_img1, \
                             const std::vector<cv::KeyPoint>& p_img2, \
                             const std::vector<cv::DMatch>& matches, \
                             const cv::Mat& T1, const cv::Mat& T2, \
                             const std::vector<std::vector<unsigned int>>& rand_idxs, \
+                            unsigned int& n_inliers, \
                             std::vector<bool>& inliers_mask, \
                             const unsigned int n_iter=200, \
                             const float inliers_threshold=3.84);
     
-    int ransac_homography(const std::vector<cv::KeyPoint>& p_img1_normalized, \
+    float ransac_homography(const std::vector<cv::KeyPoint>& p_img1_normalized, \
                             const std::vector<cv::KeyPoint>& p_img2_normalized, \
                             const std::vector<cv::KeyPoint>& p_img1, \
                             const std::vector<cv::KeyPoint>& p_img2, \
                             const std::vector<cv::DMatch>& matches, \
                             const cv::Mat& T1, const cv::Mat& T2, \
                             const std::vector<std::vector<unsigned int>>& rand_idxs, \
+                            unsigned int& n_inliers, \
                             std::vector<bool>& inliers_mask, \
                             const unsigned int n_iter=200, \
                             const float inliers_threshold=5.99);
@@ -72,17 +74,19 @@ namespace SLucAM {
 // -----------------------------------------------------------------------------
 namespace SLucAM {
     
-    unsigned int evaluate_foundamental(const std::vector<cv::KeyPoint>& p_img1, \
+    float evaluate_foundamental(const std::vector<cv::KeyPoint>& p_img1, \
                                         const std::vector<cv::KeyPoint>& p_img2, \
                                         const std::vector<cv::DMatch>& matches, \
                                         const cv::Mat& F, \
-                                        const float& inliers_threshold);
+                                        const float& inliers_threshold, \
+                                        unsigned int& n_inliers);
     
-    unsigned int evaluate_homography(const std::vector<cv::KeyPoint>& p_img1, \
+    float evaluate_homography(const std::vector<cv::KeyPoint>& p_img1, \
                                         const std::vector<cv::KeyPoint>& p_img2, \
                                         const std::vector<cv::DMatch>& matches, \
                                         const cv::Mat& H, \
-                                        const float& inliers_threshold);
+                                        const float& inliers_threshold, \
+                                        unsigned int& n_inliers);
 
 } // namespace SLucAM
 

@@ -168,17 +168,23 @@ namespace SLucAM {
         points_associations.shrink_to_fit(); 
         common_landmarks_ids.shrink_to_fit();
 
+        // If we do not have enough point associations, return error
+        if(points_associations.size() < 2) return false;
+
         // Predict the new pose (use previous pose as initial guess)
-        const cv::Mat& pose_1 = this->_poses[this->_keyframes.back().getMeasIdx()];
+        const cv::Mat& pose_1 = this->_poses[this->_keyframes.back().getPoseIdx()];
         cv::Mat predicted_pose = pose_1.clone();
-        perform_Posit(predicted_pose, meas2, \
-                        points_associations, \
-                        this->_landmarks, this->_K, \
-                        posit_n_iters, \
-                        posit_kernel_threshold, \
-                        posit_threshold_to_ignore, \
-                        posit_damping_factor);
+        const unsigned int n_inliers_posit = perform_Posit(predicted_pose, meas2, \
+                                                            points_associations, \
+                                                            this->_landmarks, this->_K, \
+                                                            posit_n_iters, \
+                                                            posit_kernel_threshold, \
+                                                            posit_threshold_to_ignore, \
+                                                            posit_damping_factor);
         
+        // If projective ICP does not have finded enough inliers, return error
+        if(n_inliers_posit < 2) return false;
+
         // Compute the parallax between the two poses
         float parallax = computeParallax(pose_1, predicted_pose, \
                             this->_landmarks, common_landmarks_ids);
@@ -374,70 +380,6 @@ namespace SLucAM {
 
 
 
-    /*
-    * Given two poses and a list of 3D points seen in common between them, this function 
-    * computes the parallax between the two poses.
-    * Inputs:
-    *   pose1/pose2
-    *   landmarks: the list of 3D points contained in the state
-    *   common_landmarks_idx: the list of predicted 3D points ids that are seen in common between
-    *       the two poses
-    * Outputs:
-    *   parallax
-    */
-    float State::computeParallax(const cv::Mat& pose1, const cv::Mat& pose2, \
-                                const std::vector<cv::Point3f>& landmarks, \
-                                const std::vector<unsigned int>& common_landmarks_ids) {
-        
-        // Initialization
-        const unsigned int n_points = common_landmarks_ids.size();
-        std::vector<float> parallaxesCos;
-        cv::Mat normal1 = cv::Mat::zeros(3,1,CV_32F);
-        cv::Mat normal2 = cv::Mat::zeros(3,1,CV_32F);
-        float dist1, dist2;
-
-        // Compute the origin of the pose2 w.r.t. pose1
-        const cv::Mat pose2_wrt_pose1 = invert_transformation_matrix(pose1)*pose2;
-        const cv::Mat O2 = pose2_wrt_pose1.rowRange(0,3).colRange(0,3) * \
-                            pose2_wrt_pose1.rowRange(0,3).col(3);
-
-        // For each point
-        parallaxesCos.reserve(n_points);
-        for(unsigned int i=0; i<n_points; ++i) {
-
-            // Take the current 3D point
-            const cv::Point3f& current_point = landmarks[common_landmarks_ids[i]];
-
-            // Compute the normal origin-point for pose1 (assumed at the origin)
-            normal1.at<float>(0,0) = current_point.x;
-            normal1.at<float>(1,0) = current_point.y;
-            normal1.at<float>(2,0) = current_point.z;
-
-            // Compute the normal origin-point for pose2
-            normal2.at<float>(0,0) = current_point.x - O2.at<float>(0,0);
-            normal2.at<float>(1,0) = current_point.y - O2.at<float>(1,0);
-            normal2.at<float>(2,0) = current_point.z - O2.at<float>(2,0);
-
-            // Compute the distances pose-point
-            dist1 = cv::norm(normal1);
-            dist2 = cv::norm(normal2);
-
-            // Compute the parallax cosine
-            parallaxesCos.emplace_back( normal1.dot(normal2)/(dist1*dist2) );
-
-        }
-        parallaxesCos.shrink_to_fit();
-
-        // Get the max parallax cosine and use it to compute the parallax
-        std::sort(parallaxesCos.begin(), parallaxesCos.end());
-        if(parallaxesCos.back() < 0.99998)
-            return std::acos(parallaxesCos.back())*180 / CV_PI;
-        return 0;   // we cannot compute acos
-
-    }
-
-
-
     /* 
     * This function add new landmarks triangulating new matches between the last 
     * integrated keyframe and the last n (specified by triangulation_window) 
@@ -559,6 +501,7 @@ namespace SLucAM {
                                     new_points_associations2, true, new_landmark_threshold);
                 current_keyframe.addPointsAssociations(new_points_associations1);
                 last_keyframe.addPointsAssociations(new_points_associations2);
+                
             }
 
         }

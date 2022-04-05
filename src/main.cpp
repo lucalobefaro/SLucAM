@@ -40,8 +40,8 @@ int main() {
 
     const unsigned int how_many_meas_optimization = 4;
     const unsigned int n_iters_POSIT = 50;
-    const unsigned int kernel_threshold_POSIT = 5000;   //1000
-    const float inliers_threshold_POSIT = 10000;        //5000
+    const unsigned int kernel_threshold_POSIT = 1000;
+    const float inliers_threshold_POSIT = 5000;
 
     const unsigned int n_iters_BA = 10;
     const float kernel_threshold_proj_BA = 100;
@@ -98,7 +98,7 @@ int main() {
                                             kernel_threshold_POSIT, \
                                             inliers_threshold_POSIT, \
                                             damping_factor)) {
-            cout << "ERROR: no more measurement to integrate" << endl;
+            cout << "ERROR: no more measurement to integrate or no enough correspondances finded" << endl;
             return 1;
         }
     }
@@ -106,7 +106,6 @@ int main() {
     cout << "DONE!" << endl << endl;
 
 
-    /*
     // -----------------------------------------------------------------------------
     // INTEGRATE NEW MEASUREMENT AND EXPAND MAP
     // -----------------------------------------------------------------------------
@@ -120,7 +119,7 @@ int main() {
                                     damping_factor);
     }
     cout << "DONE!" << endl << endl;
-    */
+    
 
     // -----------------------------------------------------------------------------
     // TEST
@@ -146,7 +145,7 @@ int main() {
     cout << "#KEYFRAMES: " << state.getKeyframes().size() << endl;
     for(unsigned int i=0; i<state.getKeyframes().size(); ++i) {
         cout << "#" << i << ", MEAS: " << state.getKeyframes()[i].getMeasIdx() \
-            << ", POSE: " << state.getKeyframes()[i].getMeasIdx() \
+            << ", POSE: " << state.getKeyframes()[i].getPoseIdx() \
             << ", OBSERVED LANDMARKS:[";
             for(unsigned int j=0; j< state.getKeyframes()[i].getKeyframesAssociations().size(); ++j) {
                 cout << " " << state.getKeyframes()[i].getKeyframesAssociations()[j];
@@ -154,7 +153,7 @@ int main() {
             cout << " ], #PREDICTED POINTS: " << state.getKeyframes()[i].getPointsAssociations().size() \
             << "/" << state.getMeasurements()[state.getKeyframes()[i].getMeasIdx()].getPoints().size() << endl;
     }
-
+    
 
     /* OTHER TEST
     const unsigned int n_posess = state.getPoses().size();

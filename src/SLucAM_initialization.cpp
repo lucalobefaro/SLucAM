@@ -74,34 +74,36 @@ namespace SLucAM {
         std::vector<bool> inliers_mask_F(n_matches);
         std::vector<bool> inliers_mask_H(n_matches);
 
-        unsigned int n_inliers_F = SLucAM::ransac_foundamental(p_img1_normalized, \
-                                                                p_img2_normalized, \
-                                                                p_img1, \
-                                                                p_img2, \
-                                                                matches, \
-                                                                T1, T2, \
-                                                                random_idxs, \
-                                                                inliers_mask_F, \
-                                                                ransac_iter);
-        unsigned int n_inliers_H = SLucAM::ransac_homography(p_img1_normalized, \
-                                                                p_img2_normalized, \
-                                                                p_img1, \
-                                                                p_img2, \
-                                                                matches, \
-                                                                T1, T2, \
-                                                                random_idxs, \
-                                                                inliers_mask_H, \
-                                                                ransac_iter);
+        unsigned int n_inliers_F;
+        float score_F = SLucAM::ransac_foundamental(p_img1_normalized, \
+                                                    p_img2_normalized, \
+                                                    p_img1, \
+                                                    p_img2, \
+                                                    matches, \
+                                                    T1, T2, \
+                                                    random_idxs, \
+                                                    n_inliers_F, \
+                                                    inliers_mask_F, \
+                                                    ransac_iter);
+        unsigned int n_inliers_H;
+        float score_H = SLucAM::ransac_homography(p_img1_normalized, \
+                                                    p_img2_normalized, \
+                                                    p_img1, \
+                                                    p_img2, \
+                                                    matches, \
+                                                    T1, T2, \
+                                                    random_idxs, \
+                                                    n_inliers_H, \
+                                                    inliers_mask_H, \
+                                                    ransac_iter);
 
-        // Compute the "rotation_only_threshold_rate"% of inliers obtained with F
-        float inliers_percentage = (rotation_only_threshold_rate*n_inliers_F)/100.0;
-
-        // If we have a rotation only case (or a close one) between 
-        // the two measurements, refuse the initialization
-        // The rotation only case is detected if the #inliers obtained with H is
-        // "near enough" the #inliers obtained with F (the neighborhood range
-        // is determined by rotation_only_threshold_rate)
-        if(n_inliers_H > (n_inliers_F-inliers_percentage)) {
+        // According to [Raúl Mur-Artal, J. M. M. Montiel and Juan D. Tardós. 
+        // ORB-SLAM: A Versatile and Accurate Monocular SLAM System. 
+        // IEEE Transactions on Robotics, vol. 31, no. 5, pp. 1147-1163, 2015. 
+        // (2015 IEEE Transactions on Robotics Best Paper Award).]
+        // we trust of F only if RH <= 0.45, where RH = (score_H)/(score_H+score_F)
+        float RH = (score_H)/(score_H+score_F);
+        if(RH > 0.45) {
             cout << "ROTATION ONLY" << endl;    // TODO: delete this
             return false;
         }
@@ -137,17 +139,19 @@ namespace SLucAM {
 // -----------------------------------------------------------------------------
 namespace SLucAM {
     
-    unsigned int evaluate_foundamental(const std::vector<cv::KeyPoint>& p_img1, \
+    float evaluate_foundamental(const std::vector<cv::KeyPoint>& p_img1, \
                                         const std::vector<cv::KeyPoint>& p_img2, \
                                         const std::vector<cv::DMatch>& matches, \
                                         const cv::Mat& F, \
                                         std::vector<bool>& inliers_mask, \
-                                        const float& inliers_threshold) {
+                                        const float& inliers_threshold, \
+                                        unsigned int& n_inliers) {
         
         // Initialization
         unsigned int n_matches = matches.size();
-        unsigned int n_inliers = 0;
         float d1, d2, Fp1, Fp2, Fp3;
+        float score = 0.0;
+        n_inliers = 0;
 
         // Some reference to save time
         const float& F11 = F.at<float>(0,0);
@@ -163,6 +167,8 @@ namespace SLucAM {
         // For each correspondance
         for(unsigned int i=0; i<n_matches; ++i) {
 
+            float is_inlier = true;
+
             // Take the current points
             const float& p1_x = p_img1[matches[i].queryIdx].pt.x;
             const float& p1_y = p_img1[matches[i].queryIdx].pt.y;
@@ -176,6 +182,14 @@ namespace SLucAM {
             Fp3 = F13*p1_x + F23*p1_y + F33;
             d1 = pow(Fp1*p2_x+Fp2*p2_y+Fp3, 2)/(pow(Fp1, 2) + pow(Fp2, 2));
 
+            // If the distance of this reprojection is over the threshold
+            // then discard it as outlier, otherwise compute the score
+            if(isnan(d1) || d1 >= inliers_threshold) {
+                is_inlier = false;
+            } else {
+                score += 5.991-d1;
+            }
+
             // Compute the square distance between point 1 and point 2 
             // projected in the image 1
             Fp1 = F11*p2_x + F12*p2_y + F13;
@@ -183,9 +197,17 @@ namespace SLucAM {
             Fp3 = F31*p2_x + F32*p2_y + F33;
             d2 = pow(Fp1*p1_x+Fp2*p1_y+Fp3, 2)/(pow(Fp1, 2) + pow(Fp2, 2));
 
+            // If the distance of this reprojection is over the threshold
+            // then discard it as outlier, otherwise compute the score
+            if(isnan(d2) || d2 >= inliers_threshold) {
+                is_inlier = false;
+            } else {
+                score += 5.991-d2;
+            }
+
             // If both the computed distances are under the threshold
             // consider the currend correspondance as inlier
-            if(d1 <= inliers_threshold && d2 <= inliers_threshold) {
+            if(is_inlier) {
                 ++n_inliers;
                 inliers_mask[i] = true;
             } else {
@@ -194,23 +216,25 @@ namespace SLucAM {
 
         }
 
-        // Return the number of inliers found
-        return n_inliers;
+        // Return the score
+        return score;
     }
 
 
 
-    unsigned int evaluate_homography(const std::vector<cv::KeyPoint>& p_img1, \
+    float evaluate_homography(const std::vector<cv::KeyPoint>& p_img1, \
                                         const std::vector<cv::KeyPoint>& p_img2, \
                                         const std::vector<cv::DMatch>& matches, \
                                         const cv::Mat& H, \
                                         std::vector<bool>& inliers_mask, \
-                                        const float& inliers_threshold) {
+                                        const float& inliers_threshold, \
+                                        unsigned int& n_inliers) {
         
         // Initialization
         unsigned int n_matches = matches.size();
-        unsigned int n_inliers = 0;
         float d1, d2, Hp1, Hp2, Hp3;
+        float score = 0.0;
+        n_inliers = 0;
 
         // Precompute inverse of H to save time
         cv::Mat inv_H = H.inv();
@@ -238,6 +262,8 @@ namespace SLucAM {
         // For each correspondance
         for(unsigned int i=0; i<n_matches; ++i) {
 
+            float is_inlier = true;
+
             // Take the current points
             const float& p1_x = p_img1[matches[i].queryIdx].pt.x;
             const float& p1_y = p_img1[matches[i].queryIdx].pt.y;
@@ -250,15 +276,31 @@ namespace SLucAM {
             Hp2 = (H21*p1_x + H22*p1_y + H23)/Hp3;
             d1 = pow(p2_x-Hp1, 2) + pow(p2_y-Hp2, 2);
 
+            // If the distance of this reprojection is over the threshold
+            // then discard it as outlier, otherwise compute the score
+            if(isnan(d1) || d1 >= inliers_threshold) {
+                is_inlier = false;
+            } else {
+                score += 5.991-d1;
+            }
+
             // Compute the square distance d2 = d(inv(H)x2, x1)
             Hp3 = inv_H31*p2_x + inv_H32*p2_y + inv_H33;
             Hp1 = (inv_H11*p2_x + inv_H12*p2_y + inv_H13)/Hp3;
             Hp2 = (inv_H21*p2_x + inv_H22*p2_y + inv_H23)/Hp3;
             d2 = pow(p1_x-Hp1, 2) + pow(p1_y-Hp2, 2);
 
+            // If the distance of this reprojection is over the threshold
+            // then discard it as outlier, otherwise compute the score
+            if(isnan(d2) || d2 >= inliers_threshold) {
+                is_inlier = false;
+            } else {
+                score += 5.991-d2;
+            }
+
             // If both the computed distances are under the threshold
             // consider the currend correspondance as inlier
-            if(d1 <= inliers_threshold && d2 <= inliers_threshold) {
+            if(is_inlier) {
                 ++n_inliers;
                 inliers_mask[i] = true;
             } else {
@@ -267,8 +309,8 @@ namespace SLucAM {
 
         }
 
-        // Return the number of inliers found
-        return n_inliers;
+        // Return the score
+        return score;
     }
 
 } // namespace SLucAM
@@ -297,8 +339,10 @@ namespace SLucAM {
     *   T1/T2: normalization matrices for p_img1/p_img2
     *   rand_idxs: n_iter sets of 8 random indices, generated in order to take
     *               random matches at each iteration
+    *   n_inliers: the number of inliers finded (output)
     *   inliers_mask: vector that contains, for each correspondance in the matches
     *                   vector, "true" if such match is an inlier, "false" otherwise
+    *                   (output)
     *   n_iter: #iterations to perform on RANSAC
     *   inliers_threshold: minimum distance that two points must have, after
     *                       "projected" with a F matrix, in order to be considered
@@ -306,24 +350,27 @@ namespace SLucAM {
     *  Outputs:
     *   score: score obtained with the best F
     */
-    int ransac_foundamental(const std::vector<cv::KeyPoint>& p_img1_normalized, \
+    float ransac_foundamental(const std::vector<cv::KeyPoint>& p_img1_normalized, \
                             const std::vector<cv::KeyPoint>& p_img2_normalized, \
                             const std::vector<cv::KeyPoint>& p_img1, \
                             const std::vector<cv::KeyPoint>& p_img2, \
                             const std::vector<cv::DMatch>& matches, \
                             const cv::Mat& T1, const cv::Mat& T2, \
                             const std::vector<std::vector<unsigned int>>& rand_idxs, \
+                            unsigned int& n_inliers, \
                             std::vector<bool>& inliers_mask, \
                             const unsigned int n_iter, \
                             const float inliers_threshold) {
         
         // Initialization
         unsigned int n_matches = matches.size();
-        unsigned int best_num_inliers = 0;
         unsigned int current_num_inliers = 0;
+        float best_score = 0.0;
+        float current_score = 0.0;
         std::vector<bool> current_inliers_mask(n_matches);
         inliers_mask.resize(n_matches);
         cv::Mat F;
+        n_inliers = 0;
 
         // Perform RANSAC for n_iter iterations
         for(unsigned int iter=0; iter<n_iter; ++iter) {
@@ -334,19 +381,21 @@ namespace SLucAM {
             // Denormalize F
             F = T1.t()*F*T2;
             
-            // Compute the number of inliers with the current F
-            current_num_inliers = evaluate_foundamental(p_img1, p_img2, \
-                                        matches, F, current_inliers_mask, inliers_threshold);
+            // Compute the score with the current F
+            current_score = evaluate_foundamental(p_img1, p_img2, \
+                                        matches, F, current_inliers_mask, \
+                                        inliers_threshold, current_num_inliers);
 
             // If it is the best encountered so far, save it as the best one
-            if(current_num_inliers > best_num_inliers) {
-                best_num_inliers = current_num_inliers;
+            if(current_score > best_score) {
+                best_score = current_score;
+                n_inliers = current_num_inliers;
                 inliers_mask = current_inliers_mask;
             }
         }
 
         // Return the score
-        return best_num_inliers;
+        return best_score;
     
     }
 
@@ -368,8 +417,10 @@ namespace SLucAM {
     *   T1/T2: normalization matrices for p_img1/p_img2
     *   rand_idxs: n_iter sets of 4 random indices, generated in order to take
     *               random matches at each iteration
+    *   n_inliers: the number of inliers finded (output)
     *   inliers_mask: vector that contains, for each correspondance in the matches
     *                   vector, "true" if such match is an inlier, "false" otherwise
+    *                   (output)
     *   n_iter: #iterations to perform on RANSAC
     *   inliers_threshold: minimum distance that two points must have, after
     *                       "projected" with a H matrix, in order to be considered
@@ -377,24 +428,27 @@ namespace SLucAM {
     *  Outputs:
     *   score: score obtained with the best H
     */
-    int ransac_homography(const std::vector<cv::KeyPoint>& p_img1_normalized, \
+    float ransac_homography(const std::vector<cv::KeyPoint>& p_img1_normalized, \
                             const std::vector<cv::KeyPoint>& p_img2_normalized, \
                             const std::vector<cv::KeyPoint>& p_img1, \
                             const std::vector<cv::KeyPoint>& p_img2, \
                             const std::vector<cv::DMatch>& matches, \
                             const cv::Mat& T1, const cv::Mat& T2, \
                             const std::vector<std::vector<unsigned int>>& rand_idxs, \
+                            unsigned int& n_inliers, \
                             std::vector<bool>& inliers_mask, \
                             const unsigned int n_iter, \
                             const float inliers_threshold) {
         
         // Initialization
         unsigned int n_matches = matches.size();
-        unsigned int best_num_inliers = 0;
         unsigned int current_num_inliers = 0;
+        float best_score = 0.0;
+        float current_score = 0.0;
         std::vector<bool> current_inliers_mask(n_matches);
         inliers_mask.resize(n_matches);
         cv::Mat H;
+        n_inliers = 0;
 
         // Perform RANSAC for n_iter iterations
         for(unsigned int iter=0; iter<n_iter; ++iter) {
@@ -405,19 +459,21 @@ namespace SLucAM {
             // Denormalize H
             H = T2.inv()*H*T1;
             
-            // Compute the number of inliers with the current F
-            current_num_inliers = evaluate_homography(p_img1, p_img2, \
-                                        matches, H, current_inliers_mask, inliers_threshold);
+            // Compute the score with the current F
+            current_score = evaluate_homography(p_img1, p_img2, \
+                                        matches, H, current_inliers_mask, \
+                                        inliers_threshold, current_num_inliers);
             
             // If it is the best encountered so far, save it as the best one
-            if(current_num_inliers > best_num_inliers) {
-                best_num_inliers = current_num_inliers;
+            if(current_score > best_score) {
+                best_score = current_score;
+                n_inliers = current_num_inliers;
                 inliers_mask = current_inliers_mask;
             }
         }
 
         // Return the score
-        return best_num_inliers;
+        return best_score;
     
     }
     
