@@ -10,10 +10,7 @@
 #include <SLucAM_geometry.h>
 #include <numeric>
 #include <algorithm>
-
-// TODO: delete this
 #include <iostream>
-using namespace std;
 
 
 
@@ -48,8 +45,15 @@ namespace SLucAM {
                     std::vector<unsigned int>& matches_filter, \
                     std::vector<cv::Point3f>& triangulated_points, \
                     const unsigned int& ransac_iter, \
-                    const float& rotation_only_threshold_rate) {
+                    const float& rotation_only_threshold_rate, \
+                    const float& parallax_threshold, \
+                    const bool verbose) {
         
+        // Initialization
+        matches.clear();
+        matches_filter.clear();
+        triangulated_points.clear();
+
         // Match the two measurements
         matcher.match_measurements(meas1, meas2, matches);
         unsigned int n_matches = matches.size();
@@ -104,7 +108,9 @@ namespace SLucAM {
         // we trust of F only if RH <= 0.45, where RH = (score_H)/(score_H+score_F)
         float RH = (score_H)/(score_H+score_F);
         if(RH > 0.45) {
-            cout << "ROTATION ONLY" << endl;    // TODO: delete this
+            if(verbose) {
+                std::cout << "-> ROTATION ONLY" << std::endl;
+            }
             return false;
         }
 
@@ -121,11 +127,29 @@ namespace SLucAM {
         cv::Mat F;
         estimate_foundamental(p_img1_normalized, p_img2_normalized, matches, matches_filter, F);
         F = T1.t()*F*T2;    // Denormalization
-
+    
         // Compute pose of image2 w.r.t. image1 from F
         extract_X_from_F(p_img1, p_img2, matches, matches_filter, \
                             F, K, predicted_pose, triangulated_points);
-        
+
+        // Compute the parallax between the two poses   
+        std::vector<unsigned int> common_landmarks(triangulated_points.size());
+        std::iota(common_landmarks.begin(), common_landmarks.end(), 0);
+        float parallax = computeParallax(cv::Mat::eye(4,4,CV_32F), predicted_pose, \
+                                            triangulated_points, common_landmarks);
+
+        // If we do not have enough parallax, refuse initialization
+        if(parallax <= parallax_threshold) {
+            if(verbose) {
+                std::cout << "-> NOT ENOUGH PARALLAX " << "(" << parallax << ")" << std::endl;
+            }
+            return false;
+        }
+
+        if(verbose) {
+            std::cout << "Initialization performed with " << matches_filter.size() << " inliers." << std::endl;
+        }        
+
         return true;
 
     }
@@ -184,7 +208,7 @@ namespace SLucAM {
 
             // If the distance of this reprojection is over the threshold
             // then discard it as outlier, otherwise compute the score
-            if(isnan(d1) || d1 >= inliers_threshold) {
+            if(std::isnan(d1) || d1 >= inliers_threshold) {
                 is_inlier = false;
             } else {
                 score += 5.991-d1;
@@ -199,7 +223,7 @@ namespace SLucAM {
 
             // If the distance of this reprojection is over the threshold
             // then discard it as outlier, otherwise compute the score
-            if(isnan(d2) || d2 >= inliers_threshold) {
+            if(std::isnan(d2) || d2 >= inliers_threshold) {
                 is_inlier = false;
             } else {
                 score += 5.991-d2;
@@ -278,7 +302,7 @@ namespace SLucAM {
 
             // If the distance of this reprojection is over the threshold
             // then discard it as outlier, otherwise compute the score
-            if(isnan(d1) || d1 >= inliers_threshold) {
+            if(std::isnan(d1) || d1 >= inliers_threshold) {
                 is_inlier = false;
             } else {
                 score += 5.991-d1;
@@ -292,7 +316,7 @@ namespace SLucAM {
 
             // If the distance of this reprojection is over the threshold
             // then discard it as outlier, otherwise compute the score
-            if(isnan(d2) || d2 >= inliers_threshold) {
+            if(std::isnan(d2) || d2 >= inliers_threshold) {
                 is_inlier = false;
             } else {
                 score += 5.991-d2;

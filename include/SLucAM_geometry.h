@@ -49,7 +49,7 @@ namespace SLucAM {
 // -----------------------------------------------------------------------------
 namespace SLucAM {
     void quaternion_to_matrix(const cv::Mat& quaternion, cv::Mat& R);
-    void matrix_to_quaternion(cv::Mat& R, cv::Mat& quaternion);
+    void matrix_to_quaternion(const cv::Mat& R, cv::Mat& quaternion);
     g2o::SE3Quat transformation_matrix_to_SE3Quat(const cv::Mat& T_matrix);
     cv::Mat SE3Quat_to_transformation_matrix(const g2o::SE3Quat& se3quat);
     Eigen::Matrix<double,3,1> point_3d_to_vector_3d(const cv::Point3f& point);
@@ -90,6 +90,7 @@ namespace SLucAM {
 namespace SLucAM {
     unsigned int perform_Posit(cv::Mat& guessed_pose, \
                                 const Measurement& measurement, \
+                                std::vector<bool>& points_associations_filter, \
                                 const std::vector<std::pair<unsigned int, \
                                         unsigned int>>& points_associations, \
                                 const std::vector<cv::Point3f>& landmarks, \

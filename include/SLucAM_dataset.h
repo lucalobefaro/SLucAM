@@ -22,8 +22,25 @@
 // Functions to deal with my personal dataset format
 // -----------------------------------------------------------------------------
 namespace SLucAM {
-    bool load_my_dataset(const std::string& dataset_folder, State& state);
+    bool load_my_dataset(const std::string& dataset_folder, State& state, \
+                            const cv::Ptr<cv::Feature2D>& detector, \
+                            const bool verbose=false);
     bool load_camera_matrix(const std::string& filename, cv::Mat& K);
+    void save_landmarks(const std::string& filename, \
+                        const std::vector<cv::Point3f>& landmarks);
+} // namespace SLucAM
+
+
+
+// -----------------------------------------------------------------------------
+// Functions to deal with the TUM Dataset
+// -----------------------------------------------------------------------------
+namespace SLucAM {
+    bool load_TUM_dataset(const std::string& dataset_folder, State& state, \
+                            const cv::Ptr<cv::Feature2D>& detector, \
+                            const bool verbose=false);
+    bool load_TUM_camera_matrix(const std::string& filename, cv::Mat& K);
+    bool save_TUM_results(const std::string& dataset_folder, const State& state);
 } // namespace SLucAM
 
 

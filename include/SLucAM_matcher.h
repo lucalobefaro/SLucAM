@@ -45,7 +45,8 @@ namespace SLucAM {
 
         void match_measurements(const Measurement& meas1, \
                                 const Measurement& meas2,  
-                                std::vector<cv::DMatch>& matches);
+                                std::vector<cv::DMatch>& matches, \
+                                const float& match_threshold=50);
     
     private:
 

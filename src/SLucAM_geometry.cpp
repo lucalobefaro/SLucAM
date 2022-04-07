@@ -399,7 +399,7 @@ namespace SLucAM {
         float dist1, dist2;
 
         // Compute the origin of the pose2 w.r.t. pose1
-        const cv::Mat pose2_wrt_pose1 = invert_transformation_matrix(pose1)*pose2;
+        const cv::Mat pose2_wrt_pose1 = pose1*pose2;
         const cv::Mat O2 = pose2_wrt_pose1.rowRange(0,3).colRange(0,3) * \
                             pose2_wrt_pose1.rowRange(0,3).col(3);
 
@@ -432,7 +432,7 @@ namespace SLucAM {
 
         // Get the max parallax cosine and use it to compute the parallax
         std::sort(parallaxesCos.begin(), parallaxesCos.end());
-        if(parallaxesCos.back() < 0.999981)
+        if(parallaxesCos.back() < 1)
             return std::acos(parallaxesCos.back())*180 / CV_PI;
         return 0;   // we cannot compute acos
 
@@ -486,7 +486,7 @@ namespace SLucAM {
     * returns the corresponding quaternion represented as a cv::Mat with 
     * dim 4x1 and with this structure: [w; x; y; z].
     */
-    void matrix_to_quaternion(cv::Mat& R, cv::Mat& quaternion) {
+    void matrix_to_quaternion(const cv::Mat& R, cv::Mat& quaternion) {
 
         // Initialization
         quaternion = cv::Mat::zeros(4,1,CV_32F);
@@ -753,8 +753,8 @@ namespace SLucAM {
         u.col(2).copyTo(t);
         t=t/cv::norm(t);
 
-        // Apply a scale to t
-        t/=10.0;
+        // Scale t vector
+        t /= 10.0;
 
         // Evaluate first solution
         X_pred.at<float>(0,0) = R1.at<float>(0,0);
@@ -957,6 +957,9 @@ namespace SLucAM {
     * Inputs:
     *   guessed_pose: initial guess (and output)
     *   measurement: the measurement for which we need to predict the pose
+    *   points_associations_filter: it will contain in position i true if
+    *           the element in position i of the points_associations vector
+    *           is an inlier, false otherwise
     *   points_associations: list of associations 2D point <-> 3D point
     *   landmarks: set of triangulated landmarks
     *   K: camera matrix
@@ -969,6 +972,7 @@ namespace SLucAM {
     */
     unsigned int perform_Posit(cv::Mat& guessed_pose, \
                                 const Measurement& measurement, \
+                                std::vector<bool>& points_associations_filter, \
                                 const std::vector<std::pair<unsigned int, \
                                         unsigned int>>& points_associations, \
                                 const std::vector<cv::Point3f>& landmarks, \
@@ -1012,8 +1016,11 @@ namespace SLucAM {
                 // Compute error and jacobian
                 if(!error_and_jacobian_Posit(guessed_pose, guessed_landmark, \
                                                 measured_point, K, img_rows, \
-                                                img_cols, error, J))
+                                                img_cols, error, J)) {
+                    points_associations_filter[obs_idx] = false;
                     continue;   // Discard not valid projections
+                }
+                    
 
                 // Compute chi error
                 const float& e_1 = error.at<float>(0,0);
@@ -1021,15 +1028,20 @@ namespace SLucAM {
                 current_chi = (e_1*e_1) + (e_2*e_2);
 
                 // Deal with outliers
-                if(current_chi > threshold_to_ignore)
+                if(current_chi > threshold_to_ignore){
+                    points_associations_filter[obs_idx] = false;
                     continue;
+                }
+                    
 
                 // Robust kernel
                 if(current_chi > kernel_threshold) {
                     error *= sqrt(kernel_threshold/current_chi);
                     current_chi = kernel_threshold;
+                    points_associations_filter[obs_idx] = false;
                 } else {
                     ++n_inliers[iter];
+                    points_associations_filter[obs_idx] = true;
                 }
 
                 // Update chi stats

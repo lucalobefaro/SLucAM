@@ -151,7 +151,9 @@ namespace SLucAM {
         
         bool initializeState(Matcher& matcher, \
                             const unsigned int& ransac_iters=200, \
-                            const float& rotation_only_threshold_rate=5);
+                            const float& rotation_only_threshold_rate=5, \
+                            const float& parallax_threshold=1.0, \
+                            const bool verbose=false);
         
         bool integrateNewMeasurement(Matcher& matcher, \
                                     const bool& triangulate_new_points=true, \
@@ -161,9 +163,10 @@ namespace SLucAM {
                                     const float& posit_damping_factor=1, \
                                     const unsigned int& triangulation_window=6, \
                                     const float& parallax_threshold=1.0, \
-                                    const float& new_landmark_threshold=0.1);
+                                    const float& new_landmark_threshold=0.02, \
+                                    const bool verbose=false);
         
-        void performTotalBA(const unsigned int& n_iters);
+        void performTotalBA(const unsigned int& n_iters, const bool verbose=false);
 
         const unsigned int reaminingMeasurements() const {
             return (this->_measurements.size() - this->_next_measurement_idx);
@@ -171,7 +174,7 @@ namespace SLucAM {
 
         void addKeyFrame(const unsigned int& meas_idx, const unsigned int& pose_idx, \
                         std::vector<std::pair<unsigned int, unsigned int>>& _points_associations, \
-                        const int& observer_keyframe_idx);
+                        const int& observer_keyframe_idx, const bool verbose=false);
 
         const cv::Mat& getCameraMatrix() const \
             {return this->_K;};
@@ -201,7 +204,8 @@ namespace SLucAM {
                                         const cv::Mat& K, \
                                         const unsigned int& triangulation_window, \
                                         const float& new_landmark_threshold, \
-                                        const float& parallax_threshold);
+                                        const float& parallax_threshold, \
+                                        const bool verbose=false);
 
         static void associateNewLandmarks(const std::vector<cv::Point3f>& predicted_landmarks, \
                                         const std::vector<cv::DMatch>& matches, \
@@ -212,7 +216,8 @@ namespace SLucAM {
                                         std::vector<std::pair<unsigned int, \
                                                 unsigned int>>& meas2_points_associations, \
                                         const bool& filter_near_points, \
-                                        const float& new_landmark_threshold);
+                                        const float& new_landmark_threshold, \
+                                        const bool verbose=false);
     
         // Camera matrix
         cv::Mat _K;

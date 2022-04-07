@@ -33,12 +33,15 @@ int main() {
     // -----------------------------------------------------------------------------
     // Create Environment and set variables
     // -----------------------------------------------------------------------------
-    const std::string dataset_folder =  "../data/datasets/my_synthetic_dataset/";
+    const std::string dataset_folder =  "../data/datasets/tum_dataset_2/";
+    const std::string predicted_landmarks_filename = dataset_folder + \
+                        "predicted_landmarks.dat";
 
+    const unsigned int n_orb_features = 500;
     const unsigned int n_ransac_iters = 200;
     const unsigned int rotation_only_threshold_rate = 2;
 
-    const unsigned int how_many_meas_optimization = 4;
+    const unsigned int how_many_meas_optimization = 24;
     const unsigned int n_iters_POSIT = 50;
     const unsigned int kernel_threshold_POSIT = 1000;
     const float inliers_threshold_POSIT = 5000;
@@ -49,43 +52,51 @@ int main() {
     const float kernel_threshold_pose_BA = 10;
     const float damping_factor = 1;
 
-    SLucAM::State state;
+    const unsigned int triangulation_window = 6;
+    const float parallax_threshold = 1.0;
+    const float new_landmark_threshold = 0.02;
 
-    std::vector<std::vector<unsigned int>> data_associations;
+    const bool verbose = true;
+
+    SLucAM::State state;
 
 
     // -----------------------------------------------------------------------------
     // Load Dataset
     // -----------------------------------------------------------------------------
-    cout << endl << "LOADING THE DATASET ..." << endl;
-    if(!SLucAM::load_synthetic_dataset(dataset_folder, state, data_associations)) {
+    cv::Ptr<cv::Feature2D> orb_detector = cv::ORB::create(n_orb_features);
+    cout << endl << "--- LOADING THE DATASET ---" << endl;
+    if(!SLucAM::load_TUM_dataset(dataset_folder, state, orb_detector, verbose)) {
         cout << "ERROR: unable to load the specified dataset" << endl;
         return 1;
     }
-    cout << "DONE!" << endl << endl;
+    cout << "--- DONE! ---" << endl << endl;
 
 
     // -----------------------------------------------------------------------------
     // Create Matcher
     // -----------------------------------------------------------------------------
-    SLucAM::Matcher matcher(data_associations);
+    SLucAM::Matcher matcher;
 
 
     // -----------------------------------------------------------------------------
     // INITIALIZATION
     // -----------------------------------------------------------------------------
-    cout << "INITIALIZATION ..." << endl;
-    if(!state.initializeState(matcher, n_ransac_iters, rotation_only_threshold_rate)) {
+    cout << "--- INITIALIZATION ---" << endl;
+    if(!state.initializeState(matcher, n_ransac_iters, \
+                                rotation_only_threshold_rate, \
+                                parallax_threshold, \
+                                verbose)) {
         cout << "ERROR: unable to perform initialization" << endl;
         return 1;
     }
-    cout << "DONE!" << endl << endl;
+    cout << "--- DONE! ---" << endl << endl;
 
 
-    // -----------------------------------------------------------------------------
+    /* -----------------------------------------------------------------------------
     // OPTIMIZE INITIALIZATION
     // -----------------------------------------------------------------------------
-    cout << "OPTIMIZING INITIALIZATION ..." << endl;
+    cout << "--- OPTIMIZING INITIALIZATION ---" << endl;
     if(state.reaminingMeasurements() == 0) {
         cout << "ERROR: no more measurement to optimize initialization" << endl;
         return 1;
@@ -97,33 +108,53 @@ int main() {
                                             n_iters_POSIT, \
                                             kernel_threshold_POSIT, \
                                             inliers_threshold_POSIT, \
-                                            damping_factor)) {
+                                            damping_factor, \
+                                            triangulation_window, \
+                                            parallax_threshold, \
+                                            new_landmark_threshold, \
+                                            verbose)) {
             cout << "ERROR: no more measurement to integrate or no enough correspondances finded" << endl;
             return 1;
         }
     }
-    state.performTotalBA(n_iters_BA);
-    cout << "DONE!" << endl << endl;
-
+    state.performTotalBA(n_iters_BA, verbose);
+    cout << "--- DONE! ---" << endl << endl;
+    */
 
     // -----------------------------------------------------------------------------
     // INTEGRATE NEW MEASUREMENT AND EXPAND MAP
     // -----------------------------------------------------------------------------
-    cout << "ESPLORATION STARTED ..." << endl;
+    cout << "--- ESPLORATION STARTED ---" << endl;
     while(state.reaminingMeasurements() != 0) {
         state.integrateNewMeasurement(matcher, \
                                     true, \
                                     n_iters_POSIT, \
                                     kernel_threshold_POSIT, \
                                     inliers_threshold_POSIT, \
-                                    damping_factor);
+                                    damping_factor, \
+                                    triangulation_window, \
+                                    parallax_threshold, \
+                                    new_landmark_threshold, \
+                                    verbose);
     }
-    cout << "DONE!" << endl << endl;
+    state.performTotalBA(n_iters_BA, verbose);
+    cout << "--- DONE! ---" << endl << endl;
     
+
+    // -----------------------------------------------------------------------------
+    // SAVE RESULTS
+    // -----------------------------------------------------------------------------
+    SLucAM::save_landmarks(predicted_landmarks_filename, state.getLandmarks());
+    SLucAM::save_TUM_results(dataset_folder, state);    
+
 
     // -----------------------------------------------------------------------------
     // TEST
     // -----------------------------------------------------------------------------
+
+    /*
+    // Save the results in the correct format in a file
+    SLucAM::save_TUM_results(dataset_folder, state);
     
     // Visualize predicted poses
     const unsigned int n_poses = state.getPoses().size();
@@ -134,7 +165,7 @@ int main() {
 
     // Test predicted 3D points
     cout << "#LANDMARKS PREDICTED: " << state.getLandmarks().size() << endl;
-    cout << "LANDMARKS PREDICTION ERROR: " << SLucAM::test_predicted_points(dataset_folder, \
+    //cout << "LANDMARKS PREDICTION ERROR: " << SLucAM::test_predicted_points(dataset_folder, \
                                                         state.getKeyframes(), \
                                                         state.getLandmarks(), \
                                                         data_associations) \

@@ -45,6 +45,12 @@ namespace SLucAM {
 
         const unsigned int getId() const \
                 {return this->_meas_id;};
+        
+        const std::string getImgName() const \
+                {return this->_img_filename;};
+
+        const void setImgName(const std::string& img_filename) \
+                {this->_img_filename = img_filename;};
 
         // Take note of the next measurement id to use
         static unsigned int _next_id;
@@ -63,6 +69,10 @@ namespace SLucAM {
 
         // The id of the current measurement
         unsigned int _meas_id;
+
+        // The name of the image which this measurement refers to,
+        // if any
+        std::string _img_filename;
 
     }; // class Measurement
 

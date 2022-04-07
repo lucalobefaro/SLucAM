@@ -9,16 +9,14 @@
 #include <SLucAM_state.h>
 #include <SLucAM_initialization.h>
 #include <SLucAM_geometry.h>
+#include <SLucAM_image.h>
 #include <Eigen/Core>
 #include <Eigen/Cholesky>
 #include <g2o/core/block_solver.h>
 #include <g2o/solvers/dense/linear_solver_dense.h>
 #include <g2o/core/optimization_algorithm_levenberg.h>
 #include <g2o/core/robust_kernel_impl.h>
-
-// TODO: delete this
 #include <iostream>
-using namespace std;
 
 
 
@@ -55,7 +53,9 @@ namespace SLucAM {
     */
     bool State::initializeState(Matcher& matcher, \
                                 const unsigned int& ransac_iters, \
-                                const float& rotation_only_threshold_rate) {
+                                const float& rotation_only_threshold_rate, \
+                                const float& parallax_threshold, \
+                                const bool verbose) {
 
         // If we do not have enough measurements refuse initialization
         if(this->_measurements.size() < 2) return false; 
@@ -67,7 +67,7 @@ namespace SLucAM {
         std::vector<cv::Point3f> triangulated_points;
         std::vector<std::pair<unsigned int, unsigned int>> meas1_points_associations;
         std::vector<std::pair<unsigned int, unsigned int>> meas2_points_associations;
-        vector<cv::DMatch> matches;
+        std::vector<cv::DMatch> matches;
         std::vector<unsigned int> matches_filter;
 
         // Take the first measurement
@@ -75,11 +75,20 @@ namespace SLucAM {
 
         // While a good measurement couple is not found try to find it
         while(!initialization_performed && (reaminingMeasurements() != 0)) {
+            
             const Measurement& meas2 = getNextMeasurement();
             initialization_performed = initialize(meas1, meas2, matcher, \
                         K, predicted_pose, matches, matches_filter, \
                         triangulated_points, ransac_iters, \
-                        rotation_only_threshold_rate);
+                        rotation_only_threshold_rate, \
+                        parallax_threshold, verbose);
+            
+            if(verbose && initialization_performed) {
+                if(!visualize_matches(meas1, meas2, matches, matches_filter)) {
+                    std::cout << "Unable to visualize the match" << std::endl;
+                }
+            }
+
         }
 
         // If we close the loop because we have no more measurements, return false
@@ -89,16 +98,17 @@ namespace SLucAM {
         // and create the associations vector for each measurement
         associateNewLandmarks(triangulated_points, matches, matches_filter, \
                                 this->_landmarks, meas1_points_associations, \
-                                 meas2_points_associations, false, 0);
+                                 meas2_points_associations, false, 0, verbose);
 
         // Create the first pose (we assume it at the origin) and use it as new keyframe
         this->_poses.emplace_back(cv::Mat::eye(4,4,CV_32F));
-        addKeyFrame(0, 0, meas1_points_associations, -1);
+        addKeyFrame(0, 0, meas1_points_associations, -1, verbose);
 
         // Save the predicted pose and use it as new keyframe
         this->_poses.emplace_back(predicted_pose);
         addKeyFrame(this->_next_measurement_idx-1, this->_poses.size()-1, \
-                    meas2_points_associations, this->_keyframes.size()-1);
+                    meas2_points_associations, this->_keyframes.size()-1, \
+                    verbose);
         
         return true;
 
@@ -129,7 +139,8 @@ namespace SLucAM {
                                         const float& posit_damping_factor, \
                                         const unsigned int& triangulation_window, \
                                         const float& parallax_threshold, \
-                                        const float& new_landmark_threshold) {
+                                        const float& new_landmark_threshold, \
+                                        const bool verbose) {
 
         // If we have no more measurement to integrate, return error
         if(this->reaminingMeasurements() == 0) return false;
@@ -150,75 +161,88 @@ namespace SLucAM {
         // Create the association vector points<->landmark by using the
         // matched points for which we already have a 3D point prediction
         // in the first measurement
-        // In the meanwhile compute the vector of common landmarks ids
         std::vector<std::pair<unsigned int, unsigned int>> points_associations;
-        std::vector<unsigned int> common_landmarks_ids;
         int current_3d_point_idx;
         points_associations.reserve(n_matches); 
-        common_landmarks_ids.reserve(n_matches);
         for(unsigned int i=0; i<n_matches; ++i) {
             current_3d_point_idx = \
                 last_keyframe.point2Landmark(matches[i].queryIdx);
             if(current_3d_point_idx != -1) {
                 points_associations.emplace_back(matches[i].trainIdx, \
                                                 current_3d_point_idx);
-                common_landmarks_ids.emplace_back(current_3d_point_idx);
             }
         }
         points_associations.shrink_to_fit(); 
-        common_landmarks_ids.shrink_to_fit();
+        const unsigned int n_points_associations = points_associations.size();
 
-        // If we do not have enough point associations, return error
-        if(points_associations.size() < 2) return false;
+        if(verbose) {
+            std::cout << "-> INTEGRATING NEW MEASUREMENT: " << matches.size() << " matches, " \
+                << n_points_associations << " already seen, ";
+        }
 
-        // Predict the new pose (use previous pose as initial guess)
+        // If we do not have enough points associations, return error
+        if(n_points_associations < 2) return false;
+
+        // Predict the new pose (use previous keyframe's pose as initial guess)
         const cv::Mat& pose_1 = this->_poses[this->_keyframes.back().getPoseIdx()];
         cv::Mat predicted_pose = pose_1.clone();
+        std::vector<bool> points_associations_filter(n_points_associations, false);
         const unsigned int n_inliers_posit = perform_Posit(predicted_pose, meas2, \
+                                                            points_associations_filter, \
                                                             points_associations, \
                                                             this->_landmarks, this->_K, \
                                                             posit_n_iters, \
                                                             posit_kernel_threshold, \
                                                             posit_threshold_to_ignore, \
                                                             posit_damping_factor);
-        
+
+        if(verbose) {
+            std::cout << n_inliers_posit << " inliers, ";
+        }
+
         // If projective ICP does not have finded enough inliers, return error
         if(n_inliers_posit < 2) return false;
 
-        // Compute the parallax between the two poses
-        float parallax = computeParallax(pose_1, predicted_pose, \
-                            this->_landmarks, common_landmarks_ids);
-        
-        // Add the new pose
-        this->_poses.emplace_back(predicted_pose);
-                
-        // If we have enough parallax
-        if(parallax > parallax_threshold) { 
-
-            // Use the new pose/measure as keyframe
-            addKeyFrame(this->_next_measurement_idx-1, this->_poses.size()-1, \
-                    points_associations, this->_keyframes.size()-1);
-
-            // If requested add new landmarks triangulating 
-            // new matches between the last integrated keyframe and the last n 
-            // (specified by triangulation_window) keyframes
-            if(triangulate_new_points) {
-                
-                triangulateNewPoints(this->_keyframes, \
-                                    this->_landmarks, \
-                                    this->_measurements, \
-                                    this->_poses, \
-                                    matcher, \
-                                    this->_K, \
-                                    triangulation_window, \
-                                    new_landmark_threshold, \
-                                    parallax_threshold);
-
+        // Filter out the points associations maintaining only the inliers 
+        // extracted from POSIT
+        std::vector<std::pair<unsigned int, unsigned int>> points_associations_filtered;
+        points_associations_filtered.reserve(n_points_associations);
+        for(unsigned int i=0; i<n_points_associations; ++i) {
+            if(points_associations_filter[i]) {
+                points_associations_filtered.emplace_back(points_associations[i]);
             }
+        }
+        points_associations_filtered.shrink_to_fit();
 
+        if(verbose) {
+            std::cout << points_associations_filtered.size() << " added to meas2" << \
+                std::endl << "\t";
         }
 
-        
+        // Add the new pose
+        this->_poses.emplace_back(predicted_pose);
+
+        // Use the new pose/measure as keyframe
+        addKeyFrame(this->_next_measurement_idx-1, this->_poses.size()-1, \
+                points_associations, this->_keyframes.size()-1, verbose);
+
+        // If requested add new landmarks triangulating 
+        // new matches between the last integrated keyframe and the last n 
+        // (specified by triangulation_window) keyframes
+        if(triangulate_new_points) {
+            
+            triangulateNewPoints(this->_keyframes, \
+                                this->_landmarks, \
+                                this->_measurements, \
+                                this->_poses, \
+                                matcher, \
+                                this->_K, \
+                                triangulation_window, \
+                                new_landmark_threshold, \
+                                parallax_threshold, \
+                                verbose);
+
+        }
 
         return true;
 
@@ -231,7 +255,7 @@ namespace SLucAM {
     * Here we assume that all the landmarks and keyframes are added in order
     * when they are restored in the original format.
     */
-    void State::performTotalBA(const unsigned int& n_iters) {
+    void State::performTotalBA(const unsigned int& n_iters, const bool verbose) {
 
         // Initialization
         unsigned int vertex_id = 0;
@@ -325,8 +349,11 @@ namespace SLucAM {
         }
 
         // Optimize
+        if(verbose) {
+            std::cout << "BUNDLE ADJUSTMENT STARTED" << std::endl;
+        }
         optimizer.initializeOptimization();
-        optimizer.setVerbose(false);
+        optimizer.setVerbose(verbose);
         optimizer.optimize(n_iters);
 
         // --- Recover optimized data ---
@@ -363,7 +390,7 @@ namespace SLucAM {
     */
     void State::addKeyFrame(const unsigned int& meas_idx, const unsigned int& pose_idx, \
                             std::vector<std::pair<unsigned int, unsigned int>>& points_associations, \
-                            const int& observer_keyframe_idx) {
+                            const int& observer_keyframe_idx, const bool verbose) {
         
         // Initialization
         const unsigned int n_points_meas = this->_measurements[meas_idx].getPoints().size();
@@ -374,6 +401,11 @@ namespace SLucAM {
         // Add the reference to the observer (if any)
         if(observer_keyframe_idx != -1) {
             this->_keyframes[observer_keyframe_idx].addKeyframeAssociation(this->_keyframes.size()-1);
+        }
+
+        if(verbose) {
+            std::cout << "NEW KEYFRAME ADDED (meas:" << meas_idx << \
+                ", pose:" << pose_idx << ")" << std::endl; 
         }
 
     }
@@ -393,10 +425,12 @@ namespace SLucAM {
                                     const cv::Mat& K, \
                                     const unsigned int& triangulation_window, \
                                     const float& new_landmark_threshold, \
-                                    const float& parallax_threshold) {
+                                    const float& parallax_threshold, \
+                                    const bool verbose) {
         
         // Initialization
         const unsigned int& n_keyframes = keyframes.size()-1;
+        const float matching_distance_threshold = 10;
 
         // Adjust the window size according to the number of keyframes
         // present
@@ -410,8 +444,16 @@ namespace SLucAM {
         const Measurement& meas2 = measurements[last_keyframe.getMeasIdx()];
         const cv::Mat& pose2 = poses[last_keyframe.getPoseIdx()];
 
+        if(verbose) {
+            std::cout << "\tTRIANGULATING NEW POINTS" << std::endl;
+        }
+
         // For each measurement in the window, triangulate new points
         for(unsigned int windows_idx=1; windows_idx<window+1; ++windows_idx) {
+
+            if(verbose) {
+                std::cout << "\t\tWINDOW " << windows_idx << ": ";
+            }
             
             // Take the reference to the keyframe with which triangulate
             Keyframe& current_keyframe = keyframes[n_keyframes-windows_idx];
@@ -419,10 +461,13 @@ namespace SLucAM {
             const cv::Mat& pose1 = poses[current_keyframe.getPoseIdx()];
 
             // Matches the two keyframes
-            // TODO: threshold
             std::vector<cv::DMatch> matches;
-            matcher.match_measurements(meas1, meas2, matches);
+            matcher.match_measurements(meas1, meas2, matches, matching_distance_threshold);
             const unsigned int n_matches = matches.size();
+            
+            if(verbose) {
+                std::cout << n_matches << " matches, ";
+            }
 
             // Build a matches filter, to take into account only those
             // matched 2D points for which we don't have already a 3D point associated
@@ -432,6 +477,8 @@ namespace SLucAM {
             std::vector<unsigned int> common_landmarks_ids;
             matches_filter.reserve(n_matches);
             common_landmarks_ids.reserve(n_matches);
+            unsigned int n_added_first = 0; 
+            unsigned int n_added_second = 0;
             for(unsigned int match_idx=0; match_idx<n_matches; ++match_idx) {
                 
                 // Take references to the two points in the current match
@@ -450,6 +497,7 @@ namespace SLucAM {
                     } else {
                         // Otherwise, add that association to the first keyframe
                         current_keyframe.addPointAssociation(p1, p2_3dpoint_idx);
+                        n_added_first++;
                     }
 
                 } else {
@@ -458,6 +506,7 @@ namespace SLucAM {
                     // for p1
                     if(p2_3dpoint_idx == -1) {
                         last_keyframe.addPointAssociation(p2, p1_3dpoint_idx);
+                        n_added_second++;
                     } else {
                         // In this case both points have already a prediction,
                         // if it is the same, consider that prediction as 
@@ -476,7 +525,14 @@ namespace SLucAM {
             // Compute the parallax
             float parallax = computeParallax(pose1, pose2, \
                                 landmarks, common_landmarks_ids);
-            
+        
+            if(verbose) {
+                std::cout << common_landmarks_ids.size() << " already seen " \
+                            << "(" << n_added_first << " added to meas1" \
+                            << ", " << n_added_second << " added to meas2), " \
+                            << matches_filter.size() << " new points, " \
+                            << "parallax "  << parallax << std::endl;
+            }  
 
             // If we have enough parallax
             if(parallax > parallax_threshold) {
@@ -496,9 +552,13 @@ namespace SLucAM {
                 // (in landmarks vector and in corresponding keyframes)
                 std::vector<std::pair<unsigned int, unsigned int>> new_points_associations1;
                 std::vector<std::pair<unsigned int, unsigned int>> new_points_associations2;
+                if(verbose) {
+                    std::cout << "\t\t\t";
+                }
                 associateNewLandmarks(triangulated_points, matches, matches_filter, \
                                     landmarks, new_points_associations1, \
-                                    new_points_associations2, true, new_landmark_threshold);
+                                    new_points_associations2, true, new_landmark_threshold, \
+                                    verbose);
                 current_keyframe.addPointsAssociations(new_points_associations1);
                 last_keyframe.addPointsAssociations(new_points_associations2);
                 
@@ -540,14 +600,18 @@ namespace SLucAM {
                                         std::vector<std::pair<unsigned int, \
                                                 unsigned int>>& meas2_points_associations, \
                                         const bool& filter_near_points, \
-                                        const float& new_landmark_threshold) {
+                                        const float& new_landmark_threshold, \
+                                        const bool verbose) {
         
         // Initialization
         const unsigned int n_associations = matches_filter.size();
         meas1_points_associations.reserve(n_associations);
         meas2_points_associations.reserve(n_associations);
-
+        unsigned int n_invalid_points = 0;
+        unsigned int n_filtered_points = 0;
+        unsigned int n_added_points = 0;
         unsigned int current_landmark_idx;
+
         for(unsigned int i=0; i<n_associations; ++i) {
 
             // Get the current 3D point
@@ -558,6 +622,7 @@ namespace SLucAM {
             if(current_point.x == 0 && \
                 current_point.y == 0 && \
                 current_point.z == 0) {
+                if(verbose) n_invalid_points++;
                 continue;                   
             }
 
@@ -577,6 +642,8 @@ namespace SLucAM {
                         matches[matches_filter[i]].queryIdx, nearest_distance.first);
                     meas2_points_associations.emplace_back(\
                         matches[matches_filter[i]].trainIdx, nearest_distance.first);
+                    
+                    if(verbose) n_filtered_points++;
 
                     continue;
 
@@ -590,9 +657,16 @@ namespace SLucAM {
                     matches[matches_filter[i]].queryIdx, current_landmark_idx);
             meas2_points_associations.emplace_back(\
                     matches[matches_filter[i]].trainIdx, current_landmark_idx);
+            
+            if(verbose) n_added_points++;
         }
         meas1_points_associations.shrink_to_fit();
         meas2_points_associations.shrink_to_fit();
+
+        if(verbose) {
+            std::cout << "POINTS ADDED: " << n_added_points << " (" << n_invalid_points << \
+                    " invalid, " << n_filtered_points << " filtered out)" << std::endl;
+        }
 
     }
 

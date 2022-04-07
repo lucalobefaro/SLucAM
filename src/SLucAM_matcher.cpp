@@ -8,6 +8,10 @@
 // -----------------------------------------------------------------------------
 #include <SLucAM_matcher.h>
 
+// TODO: delete this
+#include <iostream>
+using namespace std;
+
 
 
 
@@ -33,19 +37,26 @@ namespace SLucAM {
     */
    void Matcher::match_measurements(const Measurement& meas1, \
                                 const Measurement& meas2,  
-                                std::vector<cv::DMatch>& matches) {
+                                std::vector<cv::DMatch>& matches, \
+                                const float& match_threshold) {
                                     
         // --- DEFAULT MATCHER ---
 
         if(this->_use_default_matcher) {
+            std::vector<cv::DMatch> unfiltered_matches;
             this->_bf_matcher.match(meas1.getDescriptors(), \
                                     meas2.getDescriptors(), \
-                                    matches);
+                                    unfiltered_matches);
+            
+            // Filter matches
+            matches.reserve(unfiltered_matches.size());
+            for(auto& m : unfiltered_matches) {
+                if(m.distance <= match_threshold) 
+                    matches.emplace_back(m);
+            }
+            matches.shrink_to_fit();
+
             return;
-            //std::sort(matches.begin(), matches.end());
-            //while (matches.size() > 1000) {
-            //    matches.pop_back();
-            //}
         }
 
         // --- POINTS IDS MATCHER ---

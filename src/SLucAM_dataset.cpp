@@ -8,13 +8,10 @@
 // -----------------------------------------------------------------------------
 #include <SLucAM_dataset.h>
 #include <SLucAM_image.h>
+#include <SLucAM_geometry.h>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-
-
-// TODO: delete this
-using namespace std;
 
 
 
@@ -31,53 +28,63 @@ namespace SLucAM {
     *           with name "camera.dat"
     *   state: state object where to store loaded infos
     */
-    bool load_my_dataset(const std::string& dataset_folder, State& state) {
+    bool load_my_dataset(const std::string& dataset_folder, State& state, \
+                        const cv::Ptr<cv::Feature2D>& detector, \
+                        const bool verbose) {
 
         // Initialization
-        std::string current_filename;
+        std::string current_filename, current_line;
+        std::string camera_matrix_filename = dataset_folder + "camera.dat";
+        std::string csv_filename = dataset_folder + "data.csv";
         cv::Mat current_img, K;
         bool K_loaded = false;
-        cv::Ptr<cv::Feature2D> orb_detector = cv::ORB::create();
         std::vector<Measurement> measurements;
-        
-        // For each element in the folder
-        measurements.reserve(100);  // TODO: reserve better the space
-        for (const auto& entry : \
-                    std::filesystem::directory_iterator(dataset_folder)) {
-            
-            // Take the current filename
-            current_filename = entry.path();
-            
-            // If it is the camera matrix file, load K
-            if(current_filename == dataset_folder+"camera.dat") {
-                if(load_camera_matrix(current_filename, K))
-                    K_loaded = true;
-                continue;
-            }
 
-            // Otherwise load the measurement
+        // Load the camera matrix
+        if(!load_camera_matrix(camera_matrix_filename, K))
+            return false;
+
+        // Open the csv file
+        std::fstream csv_file;
+        csv_file.open(csv_filename);
+        if(csv_file.fail()) return false;
+        
+        // Load all measurements
+        measurements.reserve(35);
+        while(std::getline(csv_file, current_line)) {
+
+            // Get the current filename
+            std::stringstream ss_current_line_csv_file(current_line);
+            ss_current_line_csv_file >> current_filename; 
+            ss_current_line_csv_file >> current_filename;
+            current_filename = dataset_folder+current_filename;
+
+            // Load the measurement
             if(!load_image(current_filename, current_img))
                 return false;
             
             // Detect keypoints
             std::vector<cv::KeyPoint> points;
             cv::Mat descriptors;
-            orb_detector->detectAndCompute(current_img, cv::Mat(), \
+            detector->detectAndCompute(current_img, cv::Mat(), \
                                             points, descriptors);
 
             // Create new measurement
             measurements.emplace_back(Measurement(points, descriptors));
 
+            // Memorize the name of the image
+            measurements.back().setImgName(current_filename);
+
         }
         measurements.shrink_to_fit();
 
-        // In case no camera.dat file is found return error
-        if(!K_loaded)
-            return false;
-
         // Initialize the state
-        // TODO: correctly determine the number of landmarks to reserve
         state = State(K, measurements, measurements.size(), 5000);
+
+        if(verbose) {
+            std::cout << "Loaded " << measurements.size() << " measurements" \
+                << " with camera matrix:" << std::endl << K << std::endl;
+        }
         
         return true;
             
@@ -102,6 +109,204 @@ namespace SLucAM {
         camera_file.close();
 
         return true;
+    }
+
+
+
+    /*
+    * Function that save in a file all the predicted 3D points.
+    */  
+    void save_landmarks(const std::string& filename, \
+                        const std::vector<cv::Point3f>& landmarks) {
+
+        // Open the file
+        std::ofstream f;
+        f.open(filename);
+
+        // Write the header
+        f << "3D PREDICTED POINTS" << std::endl;
+        f << "x\ty\tz" << std::endl;
+
+        // Write all the landmarks
+        unsigned int n_landmars = landmarks.size();
+        for(unsigned int i=0; i<n_landmars; ++i) {
+            const cv::Point3f& l = landmarks[i];
+            f << l.x << "\t" << l.y << "\t" << l.z << std::endl;
+        }
+
+        // Close the file
+        f.close();
+
+    }
+
+} // namespace SLucAM
+
+
+
+// -----------------------------------------------------------------------------
+// Implementation of functions to deal with the TUM Dataset
+// -----------------------------------------------------------------------------
+namespace SLucAM {
+
+    bool load_TUM_dataset(const std::string& dataset_folder, State& state, \
+                            const cv::Ptr<cv::Feature2D>& detector, \
+                            const bool verbose) {
+
+        // Initialization
+        std::string camera_matrix_filename = dataset_folder + "camera_parameters.txt";
+        std::string imgs_names_filename = dataset_folder + "rgb.txt";
+        std::string current_line, current_img_filename;
+        cv::Mat K, current_img;
+        std::vector<Measurement> measurements;
+
+        // Load the camera matrix
+        if(!load_camera_matrix(camera_matrix_filename, K))
+            return false;
+
+        // Open the file containing the ordered names of the images
+        std::fstream imgs_names_file;
+        imgs_names_file.open(imgs_names_filename);
+        if(imgs_names_file.fail()) return false;
+
+        // Ignore the first thre lines
+        std::getline(imgs_names_file, current_line);
+        std::getline(imgs_names_file, current_line);
+        std::getline(imgs_names_file, current_line);
+
+        // Load all measurements (only the first 100 for now)
+        int i = 0;
+        measurements.reserve(798);
+        while(std::getline(imgs_names_file, current_line)) {
+
+            if(i==100) break;
+            
+            // Get the current filename
+            std::stringstream ss_current_line_csv_file(current_line);
+            ss_current_line_csv_file >> current_img_filename; 
+            ss_current_line_csv_file >> current_img_filename;
+            current_img_filename = dataset_folder+current_img_filename;
+
+            // Load the measurement
+            if(!load_image(current_img_filename, current_img))
+                return false;
+            
+            // Detect keypoints
+            std::vector<cv::KeyPoint> points;
+            cv::Mat descriptors;
+            detector->detectAndCompute(current_img, cv::Mat(), \
+                                            points, descriptors);
+
+            // Create new measurement
+            measurements.emplace_back(Measurement(points, descriptors));
+
+            // Memorize the name of the image
+            measurements.back().setImgName(current_img_filename);
+
+            ++i;
+
+        }
+        measurements.shrink_to_fit();
+
+        // Initialize the state
+        state = State(K, measurements, measurements.size(), 50000);
+
+        if(verbose) {
+            std::cout << "Loaded " << measurements.size() << " measurements" \
+                << " with camera matrix:" << std::endl << K << std::endl;
+        }
+
+        return true;
+
+    }
+
+
+    bool load_TUM_camera_matrix(const std::string& filename, cv::Mat& K) {
+        
+        K = cv::Mat::zeros(3,3,CV_32F);
+
+        std::fstream camera_file;
+        camera_file.open(filename);
+        if(camera_file.fail()) return false;
+        camera_file >> \
+            K.at<float>(0,0) >> K.at<float>(0,1) >> K.at<float>(0,2) >> \
+            K.at<float>(1,0) >> K.at<float>(1,1) >> K.at<float>(1,2) >> \
+            K.at<float>(2,0) >> K.at<float>(2,1) >> K.at<float>(2,2);
+        camera_file.close();
+
+        return true;
+
+    }
+
+
+
+    bool save_TUM_results(const std::string& dataset_folder, const State& state) {
+
+        // Initialization
+        std::string ground_truth_filename = dataset_folder + "groundtruth.txt";
+        std::string results_filename = dataset_folder + "pose_results.txt";
+        std::string current_line;
+        cv::Mat base_pose = cv::Mat::eye(4,4,CV_32F);
+        cv::Mat base_pose_quat = cv::Mat::zeros(4,1,CV_32F);
+        cv::Mat base_pose_R;
+        float ignore_float;
+
+        // Load the first ground truth pose as a quaternion
+        std::fstream ground_truth_file;
+        ground_truth_file.open(ground_truth_filename);
+        if(ground_truth_file.fail()) return false;
+        std::getline(ground_truth_file, current_line);
+        std::getline(ground_truth_file, current_line);
+        std::getline(ground_truth_file, current_line);
+        std::getline(ground_truth_file, current_line);
+        std::stringstream ss_current_line_ground_truth_file(current_line);
+        ss_current_line_ground_truth_file >> ignore_float;
+        ss_current_line_ground_truth_file >> base_pose.at<float>(0,3);
+        ss_current_line_ground_truth_file >> base_pose.at<float>(1,3);
+        ss_current_line_ground_truth_file >> base_pose.at<float>(2,3);
+        ss_current_line_ground_truth_file >> base_pose_quat.at<float>(0,0);
+        ss_current_line_ground_truth_file >> base_pose_quat.at<float>(1,0);
+        ss_current_line_ground_truth_file >> base_pose_quat.at<float>(2,0);
+        ss_current_line_ground_truth_file >> base_pose_quat.at<float>(3,0);
+        ground_truth_file.close();
+
+        // Extract the rotational part from the quaternion
+        quaternion_to_matrix(base_pose_quat, base_pose_R);
+        base_pose.at<float>(0,0) = base_pose_R.at<float>(0,0);
+        base_pose.at<float>(0,1) = base_pose_R.at<float>(0,1);
+        base_pose.at<float>(0,2) = base_pose_R.at<float>(0,2);
+        base_pose.at<float>(1,0) = base_pose_R.at<float>(1,0);
+        base_pose.at<float>(1,1) = base_pose_R.at<float>(1,1);
+        base_pose.at<float>(1,2) = base_pose_R.at<float>(1,2);
+        base_pose.at<float>(2,0) = base_pose_R.at<float>(2,0);
+        base_pose.at<float>(2,1) = base_pose_R.at<float>(2,1);
+        base_pose.at<float>(2,2) = base_pose_R.at<float>(2,2);
+
+        // Open the file where to save the results
+        std::ofstream results_file;
+        results_file.open(results_filename);
+        if(results_file.fail()) return false;
+
+        // Save each pose in the state, bringing it in the
+        // reference frame of the first gt pose and converting
+        // the rotational part to quaternion format
+        const unsigned int n_poses = state.getPoses().size();
+        for(unsigned int i=0; i<n_poses; ++i) {
+            const cv::Mat current_pose = base_pose*state.getPoses()[i];
+            cv::Mat current_quat;
+            matrix_to_quaternion(current_pose.rowRange(0,3).colRange(0,3), \
+                    current_quat);
+            results_file << current_pose.at<float>(0,3) << "\t";
+            results_file << current_pose.at<float>(1,3) << "\t";
+            results_file << current_pose.at<float>(2,3) << "\t";
+            results_file << current_quat.at<float>(0,0) << "\t";
+            results_file << current_quat.at<float>(1,0) << "\t";
+            results_file << current_quat.at<float>(2,0) << "\t";
+            results_file << current_quat.at<float>(3,0) << std::endl;
+        }
+        results_file.close();
+
+        return true;
+
     }
 
 } // namespace SLucAM

@@ -17,6 +17,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/core/cvstd.hpp>
 #include <opencv2/features2d.hpp>
+#include <SLucAM_measurement.h>
 
 
 
@@ -33,11 +34,9 @@ namespace SLucAM {
 // Visualization utilities
 // -----------------------------------------------------------------------------
 namespace SLucAM {
-    void visualize_matches(const cv::Mat& img1, const cv::Mat& img2, \
-                        const std::vector<cv::KeyPoint>& keypoints1, \
-                        const std::vector<cv::KeyPoint>& keypoints2, \
+    bool visualize_matches(const Measurement& meas1, const Measurement& meas2, \
                         const std::vector<cv::DMatch>& matches, \
-                        const std::string image_name = "Matches");
+                        const std::vector<unsigned int>& matches_filter);
 } // namespace SLucAM
 
 
