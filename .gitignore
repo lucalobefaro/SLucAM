@@ -4,3 +4,6 @@ lib/
 .vscode/
 data/datasets/
 TODO.txt
+results/
+plots/images/
+plots/*.asv

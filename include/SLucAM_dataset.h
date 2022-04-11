@@ -26,8 +26,6 @@ namespace SLucAM {
                             const cv::Ptr<cv::Feature2D>& detector, \
                             const bool verbose=false);
     bool load_camera_matrix(const std::string& filename, cv::Mat& K);
-    void save_landmarks(const std::string& filename, \
-                        const std::vector<cv::Point3f>& landmarks);
 } // namespace SLucAM
 
 
@@ -51,6 +49,12 @@ namespace SLucAM {
 namespace SLucAM {
     bool load_PRD_dataset(const std::string& dataset_folder, State& state);
     bool load_PRD_camera_matrix(const std::string& filename, cv::Mat& K);
+    bool save_keypoints_PRD(const std::string& filename, \
+                            const std::vector<cv::KeyPoint>& points, \
+                            const cv::Mat& descriptors);
+    bool load_keypoints_PRD(const std::string& filename, \
+                            std::vector<cv::KeyPoint>& points, \
+                            cv::Mat& descriptors);
 } // namespace SLucAM
 
 
@@ -76,12 +80,16 @@ namespace SLucAM {
 // Functions to save and load general infos on files
 // -----------------------------------------------------------------------------
 namespace SLucAM {
-    bool save_keypoints_on_file(const std::string& filename, \
-                                const std::vector<cv::KeyPoint>& points, \
-                                const cv::Mat& descriptors);
-    bool load_keypoints_from_file(const std::string& filename, \
-                                std::vector<cv::KeyPoint>& points, \
-                                cv::Mat& descriptors);
+    bool save_current_state(const std::string& folder, \
+                            const State& state);
+    bool save_poses(const std::string& folder, \
+                    const std::vector<cv::Mat>& poses);
+    bool save_landmarks(const std::string& folder, \
+                        const std::vector<cv::Point3f>& landmarks);
+    bool save_edges(const std::string& folder, \
+                    const Keyframe& keyframe);
+    bool save_keypoints(const std::string& folder, \
+                        const std::vector<cv::KeyPoint>& points);
 } // namespace SLucAM
 
 

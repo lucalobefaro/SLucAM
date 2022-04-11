@@ -34,8 +34,7 @@ int main() {
     // Create Environment and set variables
     // -----------------------------------------------------------------------------
     const std::string dataset_folder =  "../data/datasets/tum_dataset_2/";
-    const std::string predicted_landmarks_filename = dataset_folder + \
-                        "predicted_landmarks.dat";
+    const std::string results_folder = "../results/";
 
     const unsigned int n_orb_features = 500;
     const unsigned int n_ransac_iters = 200;
@@ -57,6 +56,8 @@ int main() {
     const float new_landmark_threshold = 0.02;
 
     const bool verbose = true;
+    const bool save_exploration = true;
+    unsigned int step = 0;
 
     SLucAM::State state;
 
@@ -89,6 +90,10 @@ int main() {
                                 verbose)) {
         cout << "ERROR: unable to perform initialization" << endl;
         return 1;
+    }
+    if(save_exploration) {
+        SLucAM::save_current_state(results_folder+"keyframe"+std::to_string(step)+"_", state);
+        step++;
     }
     cout << "--- DONE! ---" << endl << endl;
 
@@ -136,25 +141,26 @@ int main() {
                                     parallax_threshold, \
                                     new_landmark_threshold, \
                                     verbose);
+        if(save_exploration) {
+            SLucAM::save_current_state(results_folder+"keyframe"+std::to_string(step)+"_", state);
+            step++;
+        }
     }
-    state.performTotalBA(n_iters_BA, verbose);
+    //state.performTotalBA(n_iters_BA, verbose);
     cout << "--- DONE! ---" << endl << endl;
     
 
-    // -----------------------------------------------------------------------------
+    /* -----------------------------------------------------------------------------
     // SAVE RESULTS
     // -----------------------------------------------------------------------------
-    SLucAM::save_landmarks(predicted_landmarks_filename, state.getLandmarks());
-    SLucAM::save_TUM_results(dataset_folder, state);    
+    SLucAM::save_poses(dataset_folder, state.getPoses());
+    SLucAM::save_landmarks(dataset_folder, state.getLandmarks());
+    */
 
 
-    // -----------------------------------------------------------------------------
+    /* -----------------------------------------------------------------------------
     // TEST
     // -----------------------------------------------------------------------------
-
-    /*
-    // Save the results in the correct format in a file
-    SLucAM::save_TUM_results(dataset_folder, state);
     
     // Visualize predicted poses
     const unsigned int n_poses = state.getPoses().size();

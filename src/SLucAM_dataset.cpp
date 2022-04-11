@@ -111,34 +111,6 @@ namespace SLucAM {
         return true;
     }
 
-
-
-    /*
-    * Function that save in a file all the predicted 3D points.
-    */  
-    void save_landmarks(const std::string& filename, \
-                        const std::vector<cv::Point3f>& landmarks) {
-
-        // Open the file
-        std::ofstream f;
-        f.open(filename);
-
-        // Write the header
-        f << "3D PREDICTED POINTS" << std::endl;
-        f << "x\ty\tz" << std::endl;
-
-        // Write all the landmarks
-        unsigned int n_landmars = landmarks.size();
-        for(unsigned int i=0; i<n_landmars; ++i) {
-            const cv::Point3f& l = landmarks[i];
-            f << l.x << "\t" << l.y << "\t" << l.z << std::endl;
-        }
-
-        // Close the file
-        f.close();
-
-    }
-
 } // namespace SLucAM
 
 
@@ -292,16 +264,21 @@ namespace SLucAM {
         const unsigned int n_poses = state.getPoses().size();
         for(unsigned int i=0; i<n_poses; ++i) {
             const cv::Mat current_pose = base_pose*state.getPoses()[i];
+
+            std::cout << state.getPoses()[i] << std::endl;
+            std::cout << current_pose << std::endl;
+
             cv::Mat current_quat;
             matrix_to_quaternion(current_pose.rowRange(0,3).colRange(0,3), \
                     current_quat);
-            results_file << current_pose.at<float>(0,3) << "\t";
-            results_file << current_pose.at<float>(1,3) << "\t";
-            results_file << current_pose.at<float>(2,3) << "\t";
-            results_file << current_quat.at<float>(0,0) << "\t";
-            results_file << current_quat.at<float>(1,0) << "\t";
-            results_file << current_quat.at<float>(2,0) << "\t";
-            results_file << current_quat.at<float>(3,0) << std::endl;
+            results_file << std::setprecision(4) \
+                << current_pose.at<float>(0,3) << "\t" \
+                << current_pose.at<float>(1,3) << "\t" \
+                << current_pose.at<float>(2,3) << "\t" \
+                << current_quat.at<float>(0,0) << "\t" \
+                << current_quat.at<float>(1,0) << "\t" \
+                << current_quat.at<float>(2,0) << "\t" \
+                << current_quat.at<float>(3,0) << std::endl;
         }
         results_file.close();
 
@@ -387,12 +364,12 @@ namespace SLucAM {
                                                 points, descriptors);
                 current_el_filename = current_el_filename.substr(0, current_el_filename.size()-3) \
                                             + "yml";
-                if(!save_keypoints_on_file(extracted_data_folder+current_el_filename, points, descriptors))
+                if(!save_keypoints_PRD(extracted_data_folder+current_el_filename, points, descriptors))
                     return false;
             } else {
                 current_el_filename = current_el_filename.substr(0, current_el_filename.size()-3) \
                                             + "yml";
-                if(!load_keypoints_from_file(extracted_data_folder+current_el_filename, points, descriptors))
+                if(!load_keypoints_PRD(extracted_data_folder+current_el_filename, points, descriptors))
                     return false;
             }
             
@@ -449,6 +426,58 @@ namespace SLucAM {
 
         // Close the file
         file.close();
+
+        return true;
+    }
+
+
+     /*
+    * This function save a set of keypoints and corresponding descriptors
+    * in a .yml file.
+    */
+    bool save_keypoints_PRD(const std::string& filename, \
+                            const std::vector<cv::KeyPoint>& points, \
+                            const cv::Mat& descriptors) {
+
+        // If the file already exists, delete it
+        if(std::filesystem::exists(filename))
+            std::filesystem::remove(filename);
+
+        // Open the file
+        cv::FileStorage file(filename, cv::FileStorage::WRITE);
+
+        // Save the infos
+        file << "keypoints" << points;
+        file << "descriptors" << descriptors;
+
+        // Close the file
+        file.release();
+        
+        return true;
+    }
+    
+
+    /*
+    * This function load a set of keypoints and corresponding descriptors
+    * from a .yml file
+    */
+    bool load_keypoints_PRD(const std::string& filename, \
+                            std::vector<cv::KeyPoint>& points, \
+                            cv::Mat& descriptors) {
+        
+        // Open the file
+        cv::FileStorage file(filename, cv::FileStorage::READ);
+
+        // Check validity
+        if(file["keypoints"].empty() || file["descriptors"].empty()) 
+            return false;
+
+        // Load the infos
+        file["keypoints"] >> points;
+        file["descriptors"] >> descriptors;
+
+        // Close the file
+        file.release();
 
         return true;
     }
@@ -745,53 +774,183 @@ namespace SLucAM {
 namespace SLucAM {
 
     /*
-    * This function save a set of keypoints and corresponding descriptors
-    * in a .yml file.
+    * Function that save the current state in a folder by saving all
+    * the poses and landmarks, the filename of the last seen image
+    * and the list of landmarks seen from the last keyframe/pose.
     */
-    bool save_keypoints_on_file(const std::string& filename, \
-                                const std::vector<cv::KeyPoint>& points, \
-                                const cv::Mat& descriptors) {
-
-        // If the file already exists, delete it
-        if(std::filesystem::exists(filename))
-            std::filesystem::remove(filename);
-
-        // Open the file
-        cv::FileStorage file(filename, cv::FileStorage::WRITE);
-
-        // Save the infos
-        file << "keypoints" << points;
-        file << "descriptors" << descriptors;
-
-        // Close the file
-        file.release();
+    bool save_current_state(const std::string& folder, \
+                            const State& state) {
         
+        // Initialization
+        const Keyframe& last_keyframe = state.getKeyframes().back();
+        const Measurement& last_measure = state.getMeasurements()[last_keyframe.getMeasIdx()];
+        const std::string& last_image = last_measure.getImgName();
+        const std::vector<cv::KeyPoint>& last_measure_points = last_measure.getPoints();
+        const std::string last_image_filename = folder + "SLucAM_image_name.dat";
+
+        // Save the filename of the last seen image
+        std::ofstream f_img;
+        f_img.open(last_image_filename);
+        if(f_img.fail()) return false;
+        f_img << last_image;
+        f_img.close();
+        
+        // Save all the poses
+        if(!save_poses(folder, state.getPoses())) return false;
+
+        // Save all landmarks
+        if(!save_landmarks(folder, state.getLandmarks())) return false;
+
+        // Save the edges last_keyframe <-> landmarks
+        if(!save_edges(folder, last_keyframe)) return false;
+
+        // Save the points on the last image
+        if(!save_keypoints(folder, last_measure_points)) return false;
+
         return true;
+
     }
-    
+
 
     /*
-    * This function load a set of keypoints and corresponding descriptors
-    * from a .yml file
-    */
-    bool load_keypoints_from_file(const std::string& filename, \
-                                std::vector<cv::KeyPoint>& points, \
-                                cv::Mat& descriptors) {
+    * Function that save in a file all the predicted poses with the 
+    * format: tx ty tz r11 r12 r13 ... r33 (where rij is the element
+    * in the position <i,j> of the rotation part of the pose)
+    */  
+    bool save_poses(const std::string& folder, \
+                    const std::vector<cv::Mat>& poses) {
         
+        // Initialization
+        const std::string filename = folder + "SLucAM_poses.dat";
+        const unsigned int n_poses = poses.size();
+
         // Open the file
-        cv::FileStorage file(filename, cv::FileStorage::READ);
+        std::ofstream f;
+        f.open(filename);
+        if(f.fail()) return false;
 
-        // Check validity
-        if(file["keypoints"].empty() || file["descriptors"].empty()) 
-            return false;
+        // Write the header
+        f << "PREDICTED POSES" << std::endl;
+        f << "tx\tty\ttz\tr11\tr12\tr13\tr21\tr22\tr23\tr31\tr32\tr33\t";
 
-        // Load the infos
-        file["keypoints"] >> points;
-        file["descriptors"] >> descriptors;
+        // Write all the landmarks
+        for(unsigned int i=0; i<n_poses; ++i) {
+            const cv::Mat& p = poses[i];
+            f << std::endl \
+                << p.at<float>(0,3) << "\t" << p.at<float>(1,3) << "\t" << p.at<float>(2,3) << "\t" \
+                << p.at<float>(0,0) << "\t" << p.at<float>(0,1) << "\t" << p.at<float>(0,2) << "\t" \
+                << p.at<float>(1,0) << "\t" << p.at<float>(1,1) << "\t" << p.at<float>(1,2) << "\t" \
+                << p.at<float>(2,0) << "\t" << p.at<float>(2,1) << "\t" << p.at<float>(2,2);
+                
+        }
 
         // Close the file
-        file.release();
+        f.close();
 
         return true;
+
     }
+
+
+    /*
+    * Function that save in a file all the predicted 3D points.
+    */  
+    bool save_landmarks(const std::string& folder, \
+                        const std::vector<cv::Point3f>& landmarks) {
+        
+        // Initialization
+        const std::string filename = folder + "SLucAM_landmarks.dat";
+        unsigned int n_landmars = landmarks.size();
+
+        // Open the file
+        std::ofstream f;
+        f.open(filename);
+        if(f.fail()) return false;
+
+        // Write the header
+        f << "3D PREDICTED POINTS" << std::endl;
+        f << "x\ty\tz";
+
+        // Write all the landmarks
+        for(unsigned int i=0; i<n_landmars; ++i) {
+            const cv::Point3f& l = landmarks[i];
+            f << std::endl << l.x << "\t" << l.y << "\t" << l.z;
+        }
+
+        // Close the file
+        f.close();
+
+        return true;
+
+    }
+
+
+    /*
+    * Function that saves in a file the list of landmarks indices seen
+    * from the given keyframe.
+    */
+    bool save_edges(const std::string& folder, \
+                    const Keyframe& keyframe) {
+        
+        // Initialization
+        const std::string filename = folder + "SLucAM_edges.dat";
+        const std::vector<std::pair<unsigned int, unsigned int>>& points_associations = \
+                keyframe.getPointsAssociations();
+        const unsigned int n_edges = points_associations.size();
+
+        // Open the file
+        std::ofstream f;
+        f.open(filename);
+        if(f.fail()) return false;
+
+        // Write the header
+        f << "LIST OF SEEN LANDMARKS" << std::endl;
+        f << "landmark_idx";
+
+        // Write all the landmarks
+        for(unsigned int i=0; i<n_edges; ++i) {
+            f << std::endl << points_associations[i].second;
+        }
+
+        // Close the file
+        f.close();
+
+        return true;
+
+    }
+
+
+    /*
+    * Function that saves in a file the list of points positions seen
+    * on a measurement.
+    */
+    bool save_keypoints(const std::string& folder, \
+                        const std::vector<cv::KeyPoint>& points) {
+        
+        // Initialization
+        const std::string filename = folder + "SLucAM_img_points.dat";
+        unsigned int n_points = points.size();
+
+        // Open the file
+        std::ofstream f;
+        f.open(filename);
+        if(f.fail()) return false;
+
+        // Write the header
+        f << "2D POINTS ON IMAGE" << std::endl;
+        f << "x\ty";
+
+        // Write all the landmarks
+        for(unsigned int i=0; i<n_points; ++i) {
+            const cv::KeyPoint& p = points[i];
+            f << std::endl << p.pt.x << "\t" << p.pt.y;
+        }
+
+        // Close the file
+        f.close();
+
+        return true;
+
+    }
+
 } // namespace SLucAM

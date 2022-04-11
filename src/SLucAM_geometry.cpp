@@ -449,7 +449,7 @@ namespace SLucAM {
     
     /*
     * This function, given a quaternion represented as a cv::Mat with
-    * dim 4x1 and with this structure: [w; x; y; z], returns the
+    * dim 4x1 and with this structure: [x; y; z; w], returns the
     * corresponding rotation matrix R.
     */
     void quaternion_to_matrix(const cv::Mat& quaternion, cv::Mat& R) {
@@ -459,10 +459,10 @@ namespace SLucAM {
 
         // Create the Eigen quaternion
         Eigen::Quaternionf Eigen_quaternion;
-        Eigen_quaternion.w() = quaternion.at<float>(0,0);
-        Eigen_quaternion.x() = quaternion.at<float>(1,0);
-        Eigen_quaternion.y() = quaternion.at<float>(2,0);
-        Eigen_quaternion.z() = quaternion.at<float>(3,0);
+        Eigen_quaternion.x() = quaternion.at<float>(0,0);
+        Eigen_quaternion.y() = quaternion.at<float>(1,0);
+        Eigen_quaternion.z() = quaternion.at<float>(2,0);
+        Eigen_quaternion.w() = quaternion.at<float>(3,0);
 
         // Convert it to R
         Eigen::Matrix3f Eigen_R = Eigen_quaternion.normalized().toRotationMatrix();
@@ -484,7 +484,7 @@ namespace SLucAM {
     /*
     * This function, given a rotation matrix represented as a cv::Mat, 
     * returns the corresponding quaternion represented as a cv::Mat with 
-    * dim 4x1 and with this structure: [w; x; y; z].
+    * dim 4x1 and with this structure: [x; y; z; w].
     */
     void matrix_to_quaternion(const cv::Mat& R, cv::Mat& quaternion) {
 
@@ -507,10 +507,10 @@ namespace SLucAM {
         Eigen::Quaternionf Eigen_quaternion(Eigen_R);
 
         // Back to cv representation
-        quaternion.at<float>(0,0) = Eigen_quaternion.w();
-        quaternion.at<float>(1,0) = Eigen_quaternion.x();
-        quaternion.at<float>(2,0) = Eigen_quaternion.y();
-        quaternion.at<float>(3,0) = Eigen_quaternion.z();
+        quaternion.at<float>(0,0) = Eigen_quaternion.x();
+        quaternion.at<float>(1,0) = Eigen_quaternion.y();
+        quaternion.at<float>(2,0) = Eigen_quaternion.z();
+        quaternion.at<float>(3,0) = Eigen_quaternion.w();
     }
 
 
