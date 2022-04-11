@@ -184,7 +184,7 @@ namespace SLucAM {
         if(n_points_associations < 2) return false;
 
         // Predict the new pose (use previous keyframe's pose as initial guess)
-        const cv::Mat& pose_1 = this->_poses[this->_keyframes.back().getPoseIdx()];
+        const cv::Mat& pose_1 = this->_poses.back();//[this->_keyframes.back().getPoseIdx()];
         cv::Mat predicted_pose = pose_1.clone();
         std::vector<bool> points_associations_filter(n_points_associations, false);
         const unsigned int n_inliers_posit = perform_Posit(predicted_pose, meas2, \
@@ -203,6 +203,9 @@ namespace SLucAM {
         // If projective ICP does not have finded enough inliers, return error
         if(n_inliers_posit < 2) return false;
 
+        // Add the new pose
+        this->_poses.emplace_back(predicted_pose);
+
         // Filter out the points associations maintaining only the inliers 
         // extracted from POSIT
         std::vector<std::pair<unsigned int, unsigned int>> points_associations_filtered;
@@ -219,12 +222,9 @@ namespace SLucAM {
                 std::endl << "\t";
         }
 
-        // Add the new pose
-        this->_poses.emplace_back(predicted_pose);
-
         // Use the new pose/measure as keyframe
         addKeyFrame(this->_next_measurement_idx-1, this->_poses.size()-1, \
-                points_associations, this->_keyframes.size()-1, verbose);
+                points_associations_filtered, this->_keyframes.size()-1, verbose);
 
         // If requested add new landmarks triangulating 
         // new matches between the last integrated keyframe and the last n 

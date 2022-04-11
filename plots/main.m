@@ -2,7 +2,7 @@
 warning('off');
 folder = "../results/";
 results_folder = "./images/";
-n_keyframes = 82;
+n_keyframes = 379;
 
 
 % create an invisible figure
@@ -13,7 +13,7 @@ for i = 0:n_keyframes
     
     % Plot the current keyframe
     plot_keyframe(folder, i);
-    
+    %
     % Save the plot
     print(f, '-djpeg', sprintf(results_folder+'image_%03d.jpg', i)); 
     
