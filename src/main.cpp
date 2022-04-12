@@ -33,10 +33,10 @@ int main() {
     // -----------------------------------------------------------------------------
     // Create Environment and set variables
     // -----------------------------------------------------------------------------
-    const std::string dataset_folder =  "../data/datasets/tum_dataset_2/";
+    const std::string dataset_folder =  "../data/datasets/tum_dataset_teddy/";
     const std::string results_folder = "../results/";
 
-    const unsigned int n_orb_features = 500;
+    const unsigned int n_orb_features = 1000;
     const unsigned int n_ransac_iters = 200;
     const unsigned int rotation_only_threshold_rate = 2;
 
@@ -53,7 +53,7 @@ int main() {
 
     const unsigned int triangulation_window = 6;
     const float parallax_threshold = 1.0;
-    const float new_landmark_threshold = 0.02;
+    const float new_landmark_threshold = 0.01;
 
     const bool verbose = true;
     const bool save_exploration = true;

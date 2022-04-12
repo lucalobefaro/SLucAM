@@ -2,7 +2,7 @@
 warning('off');
 folder = "../results/";
 results_folder = "./images/";
-n_keyframes = 379;
+n_keyframes = 196;
 
 
 % create an invisible figure
@@ -26,3 +26,9 @@ end
 
 % Close the figure
 delete(f);
+
+
+%{
+f = figure('visible', 'on');
+plot_keyframe(folder, i);
+%}

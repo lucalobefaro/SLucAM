@@ -181,7 +181,12 @@ namespace SLucAM {
         }
 
         // If we do not have enough points associations, return error
-        if(n_points_associations < 2) return false;
+        if(n_points_associations < 2) {
+            if(verbose) {
+                std::cout << "too few associations..." << std::endl;
+            }
+            return false;
+        }
 
         // Predict the new pose (use previous keyframe's pose as initial guess)
         const cv::Mat& pose_1 = this->_poses.back();//[this->_keyframes.back().getPoseIdx()];
@@ -201,7 +206,12 @@ namespace SLucAM {
         }
 
         // If projective ICP does not have finded enough inliers, return error
-        if(n_inliers_posit < 2) return false;
+        if(n_inliers_posit < 2) {
+            if(verbose) {
+                std::cout << "too few inliers..." << std::endl;
+            }
+            return false;
+        }
 
         // Add the new pose
         this->_poses.emplace_back(predicted_pose);
@@ -469,6 +479,14 @@ namespace SLucAM {
                 std::cout << n_matches << " matches, ";
             }
 
+            // If we have no match just ignore this measurement
+            if(n_matches == 0) {
+                if(verbose) {
+                    std::cout << " nothing to triangulate." << std::endl;
+                }
+                continue;
+            }
+
             // Build a matches filter, to take into account only those
             // matched 2D points for which we don't have already a 3D point associated
             // In the meanwhile create a vector of common landmarks ids for parallax
@@ -521,6 +539,17 @@ namespace SLucAM {
             }
             matches_filter.shrink_to_fit();
             common_landmarks_ids.shrink_to_fit();
+
+            // If we have no common points we cannot compute the parallax
+            // so we ignore this measurement
+            const unsigned int n_common_landmarks = common_landmarks_ids.size();
+            if(n_common_landmarks== 0) {
+                if(verbose) {
+                    std::cout << n_common_landmarks << " already seen, unable" << \
+                                " to compute the parallax." << std::endl;
+                }
+                continue;
+            }
 
             // Compute the parallax
             float parallax = computeParallax(pose1, pose2, \

@@ -21,10 +21,14 @@ function res = plot_keyframe(folder, idx)
 
     % Plot the image
     nexttile(1, [1 1]);
-    plot_image(img_filename);
+    img = imread(img_filename);
+    imshow(img);
     hold on;
-    plot_image_points(img_points);
+
+    % Plot image points
+    scatter(img_points(1,:),img_points(2,:));
     title("Current measurement");
+    hold on;
     
     % Plot pose graphs
     nexttile(5, [1,1]);
@@ -43,13 +47,14 @@ function res = plot_keyframe(folder, idx)
     nexttile(2, [3 3]);
     plot_poses(poses);
     hold on;
-    plot_landmarks(landmarks);
+    scatter3(landmarks(1,:), landmarks(2,:), landmarks(3,:));   % plot landmarks
     hold on;
     plot_edges(poses, edges, landmarks);
     hold on;
-    set(gca,'XColor', 'none','YColor','none','ZColor','none');
-    view([0 -80]);
-    axis([-1.5 1.5 -1 1 -0.5 10])
+    %set(gca,'XColor','none','YColor','none','ZColor','none');
+    xlabel("x"); ylabel("y"); zlabel("z");
+    view([180 -60]);
+    axis([-1.5 1.5 -1 1 -0.5 4])
     camproj('perspective');
     title("World");
     
