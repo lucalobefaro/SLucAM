@@ -84,16 +84,16 @@ namespace SLucAM {
 
 
     /*
-    * Function that triangulates a bunch of points.
+    * Function that triangulates a bunch of points seen from two cameras.
     * Inputs:
     *   p_img1/p_img2: points seen from two cameras
     *   matches: all matches between p_img1 and p_img2, with outliers
     *   idxs: we will consider only those points contained in 
     *           the matches vector, for wich we have indices in this vector idxs
-    *   X: pose of the camera 2 w.r.t. camera 1
+    *   pose1/pose2: pose of the two cameras
     *   K: camera matrix of the two cameras
     *   triangulated_points: vector where to store the triangulated points
-    *       (expressed w.r.t. camera 1)
+    *       (expressed w.r.t. world)
     * Outputs:
     *   n_triangulated_points: number of triangulated points
     */
@@ -101,7 +101,8 @@ namespace SLucAM {
                                     const std::vector<cv::KeyPoint>& p_img2, \
                                     const std::vector<cv::DMatch>& matches, \
                                     const std::vector<unsigned int>& idxs, \
-                                    const cv::Mat& X, const cv::Mat& K, \
+                                    const cv::Mat& pose1, const cv::Mat& pose2, \
+                                    const cv::Mat& K, \
                                     std::vector<cv::Point3f>& triangulated_points) {
         
         // Initialization
@@ -109,36 +110,49 @@ namespace SLucAM {
         unsigned int n_triangulated_points = 0;
         triangulated_points.reserve(n_points);
 
-        // Pre-computation to save time
+        // Compute the inverse of the camera matrix
+        // TODO: this computation can be avoided to be done each time
         const cv::Mat inv_K = K.inv();
-        const float& inv_K11 = inv_K.at<float>(0,0);
-        const float& inv_K12 = inv_K.at<float>(0,1);
-        const float& inv_K13 = inv_K.at<float>(0,2);
-        const float& inv_K21 = inv_K.at<float>(1,0);
-        const float& inv_K22 = inv_K.at<float>(1,1);
-        const float& inv_K23 = inv_K.at<float>(1,2);
-        const float& inv_K31 = inv_K.at<float>(2,0);
-        const float& inv_K32 = inv_K.at<float>(2,1);
-        const float& inv_K33 = inv_K.at<float>(2,2);
 
-        const cv::Mat inv_X = invert_transformation_matrix(X);
-        const cv::Mat inv_R_inv_K = inv_X(cv::Rect(0,0,3,3))*inv_K;
-        const float& inv_R_inv_K11 = inv_R_inv_K.at<float>(0,0);
-        const float& inv_R_inv_K12 = inv_R_inv_K.at<float>(0,1);
-        const float& inv_R_inv_K13 = inv_R_inv_K.at<float>(0,2);
-        const float& inv_R_inv_K21 = inv_R_inv_K.at<float>(1,0);
-        const float& inv_R_inv_K22 = inv_R_inv_K.at<float>(1,1);
-        const float& inv_R_inv_K23 = inv_R_inv_K.at<float>(1,2);
-        const float& inv_R_inv_K31 = inv_R_inv_K.at<float>(2,0);
-        const float& inv_R_inv_K32 = inv_R_inv_K.at<float>(2,1);
-        const float& inv_R_inv_K33 = inv_R_inv_K.at<float>(2,2);
+        // Compute the projection matrix for camera 1 (with references)
+        //  P1 = R1*K.inv()
+        const cv::Mat P1 = pose1.rowRange(0,3).colRange(0,3)*inv_K;
+        const float& P1_11 = P1.at<float>(0,0);
+        const float& P1_12 = P1.at<float>(0,1);
+        const float& P1_13 = P1.at<float>(0,2);
+        const float& P1_21 = P1.at<float>(1,0);
+        const float& P1_22 = P1.at<float>(1,1);
+        const float& P1_23 = P1.at<float>(1,2);
+        const float& P1_31 = P1.at<float>(2,0);
+        const float& P1_32 = P1.at<float>(2,1);
+        const float& P1_33 = P1.at<float>(2,2);
 
-        cv::Mat O2 = inv_X(cv::Rect(3,0,1,3));
-        const float O2_x = O2.at<float>(0,0);
-        const float O2_y = O2.at<float>(1,0);
-        const float O2_z = O2.at<float>(2,0);
+        // Compute the projection matrix for camera 2 (with references)
+        //  P2 = R2*K.inv()
+        const cv::Mat P2 = pose2.rowRange(0,3).colRange(0,3)*inv_K;
+        const float& P2_11 = P2.at<float>(0,0);
+        const float& P2_12 = P2.at<float>(0,1);
+        const float& P2_13 = P2.at<float>(0,2);
+        const float& P2_21 = P2.at<float>(1,0);
+        const float& P2_22 = P2.at<float>(1,1);
+        const float& P2_23 = P2.at<float>(1,2);
+        const float& P2_31 = P2.at<float>(2,0);
+        const float& P2_32 = P2.at<float>(2,1);
+        const float& P2_33 = P2.at<float>(2,2);
+
+        // Take references to the position of the origin of camera 1
+        cv::Mat O1 = pose1.col(3).rowRange(0,3);
+        const float& O1_x = O1.at<float>(0);
+        const float& O1_y = O1.at<float>(1);
+        const float& O1_z = O1.at<float>(2);
+
+        // Take references to the position of the origin of camera 2
+        cv::Mat O2 = pose2.col(3).rowRange(0,3);
+        const float& O2_x = O2.at<float>(0);
+        const float& O2_y = O2.at<float>(1);
+        const float& O2_z = O2.at<float>(2);
         
-        // Triangluate each couple of points
+        // Triangulate each couple of points
         for(unsigned int i=0; i<n_points; ++i) {
 
             // Take references to the current couple of points
@@ -148,83 +162,47 @@ namespace SLucAM {
             const float& p2_y = p_img2[matches[idxs[i]].trainIdx].pt.y;
 
             // Ensemble the matrix D as [-d1,d2] where d1 and d2 are
-            // the directions starting from p1 and p2 respectively, 
-            // computed as:
-            //  d1 = inv_K*p1
-            //  d2 = inv_R_inv_K*p2 
+            // the rays starting from p1 and p2 respectively
             cv::Mat D = cv::Mat::eye(3,2,CV_32F);
-            D.at<float>(0,0) = -(inv_K11*p1_x + inv_K12*p1_y + inv_K13);
-            D.at<float>(1,0) = -(inv_K21*p1_x + inv_K22*p1_y + inv_K23);
-            D.at<float>(2,0) = -(inv_K31*p1_x + inv_K32*p1_y + inv_K33);
-            D.at<float>(0,1) = (inv_R_inv_K11*p2_x + inv_R_inv_K12*p2_y + inv_R_inv_K13);
-            D.at<float>(1,1) = (inv_R_inv_K21*p2_x + inv_R_inv_K22*p2_y + inv_R_inv_K23);;
-            D.at<float>(2,1) = (inv_R_inv_K31*p2_x + inv_R_inv_K32*p2_y + inv_R_inv_K33);;
+            D.at<float>(0,0) = -(P1_11*p1_x + P1_12*p1_y + P1_13);
+            D.at<float>(1,0) = -(P1_21*p1_x + P1_22*p1_y + P1_23);
+            D.at<float>(2,0) = -(P1_31*p1_x + P1_32*p1_y + P1_33);
+            D.at<float>(0,1) = (P2_11*p2_x + P2_12*p2_y + P2_13);
+            D.at<float>(1,1) = (P2_21*p2_x + P2_22*p2_y + P2_23);;
+            D.at<float>(2,1) = (P2_31*p2_x + P2_32*p2_y + P2_33);;
 
-            // Triangulate
-            cv::Mat s = (-(D.t()*D)).inv()*(D.t()*O2);
+            // Compute the closest points on the two rays
+            cv::Mat s = (-(D.t()*D)).inv()*(D.t()*(O2-O1));
             const float& s1 = s.at<float>(0,0);
             const float& s2 = s.at<float>(0,1);
-            if(s1<0 || s2<0) {    // The point is behind the camera
+
+            // Check if one of the closest is behind the camera 
+            if(s1<0 || s2<0) {
+
+                // It is invalid: an invalid point is assumed at position (0,0,0)
+                // TODO: this assumption can be avoided
                 triangulated_points.emplace_back(cv::Point3f(0,0,0));
-            } else {
-                triangulated_points.emplace_back( 
-                    cv::Point3f(0.5*(-D.at<float>(0,0)*s1 + (D.at<float>(0,1)*s2+O2_x)), \
-                                0.5*(-D.at<float>(1,0)*s1 + (D.at<float>(1,1)*s2+O2_y)), \
-                                0.5*(-D.at<float>(2,0)*s1 + (D.at<float>(2,1)*s2+O2_z))) 
-                );
-                ++n_triangulated_points;
+
+                // Do not count it as good
+                continue;
             }
+            
+            // Compute the 3D point as the middlepoint between the two closest points
+            // on the rays (-D1 to re-do the minus computed before)
+            triangulated_points.emplace_back( 
+                cv::Point3f(0.5*((-D.at<float>(0,0)*s1+O1_x) + (D.at<float>(0,1)*s2+O2_x)), \
+                            0.5*((-D.at<float>(1,0)*s1+O1_y) + (D.at<float>(1,1)*s2+O2_y)), \
+                            0.5*((-D.at<float>(2,0)*s1+O1_z) + (D.at<float>(2,1)*s2+O2_z))) 
+            );
+
+            // Count it as good
+            ++n_triangulated_points;
+        
         }
 
         triangulated_points.shrink_to_fit();
 
         return n_triangulated_points;
-    }
-
-
-
-    /*
-    * Function that, given a set of points in a reference frame defined
-    * by "pose", returns the same points expressed in the world frame
-    * (assumed that pose is expressed in world frame).
-    * Inputs:
-    *   pose: a 4x4 Transformation matrix that represent the reference frame
-    *       in which points are expressed
-    *   points: set of point to transform
-    */
-    void from_pose_frame_to_world_frame(const cv::Mat& pose, \
-                                    std::vector<cv::Point3f>& points) {
-        
-        // Initialization
-        const unsigned int n_points = points.size();
-        const cv::Mat pose_inv = invert_transformation_matrix(pose);
-
-        // Take reference to R
-        const float& R11 = pose_inv.at<float>(0,0);
-        const float& R12 = pose_inv.at<float>(0,1);
-        const float& R13 = pose_inv.at<float>(0,2);
-        const float& R21 = pose_inv.at<float>(1,0);
-        const float& R22 = pose_inv.at<float>(1,1);
-        const float& R23 = pose_inv.at<float>(1,2);
-        const float& R31 = pose_inv.at<float>(2,0);
-        const float& R32 = pose_inv.at<float>(2,1);
-        const float& R33 = pose_inv.at<float>(2,2);
-
-        // Take reference to t
-        const float& tx = pose_inv.at<float>(0,3);
-        const float& ty = pose_inv.at<float>(1,3);
-        const float& tz = pose_inv.at<float>(2,3);
-
-        // Apply the chenge of reference frame (R*p+t, for each p)
-        for(unsigned int i=0; i<n_points; ++i) {
-            const float p_x = points[i].x;
-            const float p_y = points[i].y;
-            const float p_z = points[i].z;
-            points[i].x = (R11*p_x + R12*p_y + R13*p_z) + tx;
-            points[i].y = (R21*p_x + R22*p_y + R23*p_z) + ty;
-            points[i].z = (R31*p_x + R32*p_y + R33*p_z) + tz;
-        }
-
     }
 
 
@@ -398,10 +376,13 @@ namespace SLucAM {
         cv::Mat normal2 = cv::Mat::zeros(3,1,CV_32F);
         float dist1, dist2;
 
-        // Compute the origin of the pose2 w.r.t. pose1
-        const cv::Mat pose2_wrt_pose1 = pose1*pose2;
-        const cv::Mat O2 = pose2_wrt_pose1.rowRange(0,3).colRange(0,3) * \
-                            pose2_wrt_pose1.rowRange(0,3).col(3);
+        // Compute the origin of the pose 1
+        cv::Mat O1 = -pose1.rowRange(0,3).colRange(0,3).t() * \
+                            pose1.rowRange(0,3).col(3);
+
+        // Compute the origin of the pose2
+        cv::Mat O2 = -pose2.rowRange(0,3).colRange(0,3).t() * \
+                            pose2.rowRange(0,3).col(3);
 
         // For each point
         parallaxesCos.reserve(n_points);
@@ -410,15 +391,15 @@ namespace SLucAM {
             // Take the current 3D point
             const cv::Point3f& current_point = landmarks[common_landmarks_ids[i]];
 
-            // Compute the normal origin-point for pose1 (assumed at the origin)
-            normal1.at<float>(0,0) = current_point.x;
-            normal1.at<float>(1,0) = current_point.y;
-            normal1.at<float>(2,0) = current_point.z;
+            // Compute the normal origin-point for pose1
+            normal1.at<float>(0,0) = current_point.x - O1.at<float>(0);
+            normal1.at<float>(1,0) = current_point.y - O1.at<float>(1);
+            normal1.at<float>(2,0) = current_point.z - O1.at<float>(2);
 
             // Compute the normal origin-point for pose2
-            normal2.at<float>(0,0) = current_point.x - O2.at<float>(0,0);
-            normal2.at<float>(1,0) = current_point.y - O2.at<float>(1,0);
-            normal2.at<float>(2,0) = current_point.z - O2.at<float>(2,0);
+            normal2.at<float>(0,0) = current_point.x - O2.at<float>(0);
+            normal2.at<float>(1,0) = current_point.y - O2.at<float>(1);
+            normal2.at<float>(2,0) = current_point.z - O2.at<float>(2);
 
             // Compute the distances pose-point
             dist1 = cv::norm(normal1);
@@ -704,14 +685,15 @@ namespace SLucAM {
     * X = [R|t].
     * Inputs:
     *   p_img1/p_img2: points to use in order to understand wich X computed
-    *                   triangulates "better"
+    *                   is "better"
     *   matches: all matches between p_img1 and p_img2, with outliers
     *   idxs: we will consider only those points contained in 
     *           the matches vector, for wich we have indices in this vector idxs
     *   F: Foundamental Matrix from which to extract X
     *   K: camera matrix
     *   X: output Transformation Matrix extracted from F [R|t]
-    *   triangulated_points: the point triangulated using p_img1/p_img2 and X
+    *   triangulated_points: points triangulated between the first pose (assumed
+    *       at the origin) and the pose X extracted from F
     */
     void extract_X_from_F(const std::vector<cv::KeyPoint>& p_img1, \
                             const std::vector<cv::KeyPoint>& p_img2, \
@@ -730,21 +712,20 @@ namespace SLucAM {
         float current_score = 0;
         std::vector<cv::Point3f> current_triangulated_points;
         cv::Mat X_pred = cv::Mat::eye(4,4,CV_32F);
+        const cv::Mat pose1 = cv::Mat::eye(4,4,CV_32F);
 
         // Extract the essential matrix and decompose it
-        cv::Mat u,w,vt,v, ut;
         cv::Mat E = K.t()*F*K;
+        cv::Mat u,w,vt;
         cv::SVD::compute(E,w,u,vt);
-        v = vt.t();
-        ut = u.t();
 
         // Extract the R matrix (2 solutions)
-        cv::Mat R1 = v*W_mat*ut;
+        cv::Mat R1 = u*W_mat*vt;
         if(cv::determinant(R1) < 0) {   // right handed condition
-            R1=-R1;
+            R1 = -R1;
         }
-        cv::Mat R2 = v*W_mat.t()*ut;
-        if(cv::determinant(R2)<0) {     // right handed condition
+        cv::Mat R2 = u*W_mat.t()*vt;
+        if(cv::determinant(R2) < 0) {
             R2=-R2;
         }
 
@@ -754,7 +735,7 @@ namespace SLucAM {
         t=t/cv::norm(t);
 
         // Scale t vector
-        t /= 10.0;
+        t /= 4.4;
 
         // Evaluate first solution
         X_pred.at<float>(0,0) = R1.at<float>(0,0);
@@ -769,8 +750,9 @@ namespace SLucAM {
         X_pred.at<float>(0,3) = t.at<float>(0,0);
         X_pred.at<float>(1,3) = t.at<float>(0,1);
         X_pred.at<float>(2,3) = t.at<float>(0,2);
-        current_score = triangulate_points(p_img1, p_img2, matches, idxs, X_pred, K, \
-                                            current_triangulated_points);
+        current_score = triangulate_points(p_img1, p_img2, matches, idxs, \
+                                    pose1, X_pred, K, \
+                                    current_triangulated_points);
         if(current_score > best_score) {
             best_score = current_score;
             X = X_pred.clone();
@@ -782,8 +764,9 @@ namespace SLucAM {
         X_pred.at<float>(1,3) = -X_pred.at<float>(1,3);
         X_pred.at<float>(2,3) = -X_pred.at<float>(2,3);
         current_triangulated_points.clear();
-        current_score = triangulate_points(p_img1, p_img2, matches, idxs, X_pred, K, \
-                                            current_triangulated_points);
+        current_score = triangulate_points(p_img1, p_img2, matches, idxs, \
+                                    pose1, X_pred, K, \
+                                    current_triangulated_points);
         if(current_score > best_score) {
             best_score = current_score;
             X = X_pred.clone();
@@ -804,8 +787,9 @@ namespace SLucAM {
         X_pred.at<float>(1,3) = t.at<float>(0,1);
         X_pred.at<float>(2,3) = t.at<float>(0,2);
         current_triangulated_points.clear();
-        current_score = triangulate_points(p_img1, p_img2, matches, idxs, X_pred, K, \
-                                            current_triangulated_points);
+        current_score = triangulate_points(p_img1, p_img2, matches, idxs, \
+                                    pose1, X_pred, K, \
+                                    current_triangulated_points);
         if(current_score > best_score) {
             best_score = current_score;
             X = X_pred.clone();
@@ -817,8 +801,9 @@ namespace SLucAM {
         X_pred.at<float>(1,3) = -X_pred.at<float>(1,3);
         X_pred.at<float>(2,3) = -X_pred.at<float>(2,3);
         current_triangulated_points.clear();
-        current_score = triangulate_points(p_img1, p_img2, matches, idxs, X_pred, K, \
-                                            current_triangulated_points);
+        current_score = triangulate_points(p_img1, p_img2, matches, idxs, \
+                                    pose1, X_pred, K, \
+                                    current_triangulated_points);
         if(current_score > best_score) {
             best_score = current_score;
             X = X_pred.clone();
@@ -995,6 +980,9 @@ namespace SLucAM {
         const cv::Mat DampingMatrix = \
                     cv::Mat::eye(6, 6, CV_32F)*damping_factor;
 
+        // Consider the pose of the world w.r.t. camera
+        guessed_pose = invert_transformation_matrix(guessed_pose);
+
         // For each iteration
         for(unsigned int iter=0; iter<n_iterations; ++iter) {
             
@@ -1032,7 +1020,6 @@ namespace SLucAM {
                     points_associations_filter[obs_idx] = false;
                     continue;
                 }
-                    
 
                 // Robust kernel
                 if(current_chi > kernel_threshold) {
@@ -1067,6 +1054,9 @@ namespace SLucAM {
             // Apply the perturbation
             apply_perturbation_Tmatrix(dx, guessed_pose, 0);
         }
+
+        // Go back in the representation of pose w.r.t. world
+        guessed_pose = invert_transformation_matrix(guessed_pose);
 
         return n_inliers.back();
 

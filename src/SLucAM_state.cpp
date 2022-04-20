@@ -53,7 +53,6 @@ namespace SLucAM {
     */
     bool State::initializeState(Matcher& matcher, \
                                 const unsigned int& ransac_iters, \
-                                const float& rotation_only_threshold_rate, \
                                 const float& parallax_threshold, \
                                 const bool verbose) {
 
@@ -80,7 +79,6 @@ namespace SLucAM {
             initialization_performed = initialize(meas1, meas2, matcher, \
                         K, predicted_pose, matches, matches_filter, \
                         triangulated_points, ransac_iters, \
-                        rotation_only_threshold_rate, \
                         parallax_threshold, verbose);
             
             if(verbose && initialization_performed) {
@@ -189,7 +187,7 @@ namespace SLucAM {
         }
 
         // Predict the new pose (use previous keyframe's pose as initial guess)
-        const cv::Mat& pose_1 = this->_poses.back();//[this->_keyframes.back().getPoseIdx()];
+        const cv::Mat& pose_1 = this->_poses[this->_keyframes.back().getPoseIdx()];
         cv::Mat predicted_pose = pose_1.clone();
         std::vector<bool> points_associations_filter(n_points_associations, false);
         const unsigned int n_inliers_posit = perform_Posit(predicted_pose, meas2, \
@@ -568,14 +566,10 @@ namespace SLucAM {
 
                 // Triangulate new points
                 std::vector<cv::Point3f> triangulated_points;
-                const cv::Mat pose_2_wrt_pose_1 = invert_transformation_matrix(pose1)*pose2;
                 triangulate_points(meas1.getPoints(), meas2.getPoints(), \
                                     matches, matches_filter, \
-                                    pose_2_wrt_pose_1, K, \
+                                    pose1, pose2, K, \
                                     triangulated_points);
-                
-                // Bring the triangulated points in world coordinates
-                from_pose_frame_to_world_frame(pose1, triangulated_points);
                             
                 // Add new triangulated points to the state
                 // (in landmarks vector and in corresponding keyframes)

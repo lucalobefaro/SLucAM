@@ -30,7 +30,6 @@ namespace SLucAM {
                     std::vector<unsigned int>& matches_filter, \
                     std::vector<cv::Point3f>& triangulated_points, \
                     const unsigned int& ransac_iter=200, \
-                    const float& rotation_only_threshold_rate=5, \
                     const float& parallax_threshold=1.0, \
                     const bool verbose=false);
 

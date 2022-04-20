@@ -151,7 +151,6 @@ namespace SLucAM {
         
         bool initializeState(Matcher& matcher, \
                             const unsigned int& ransac_iters=200, \
-                            const float& rotation_only_threshold_rate=5, \
                             const float& parallax_threshold=1.0, \
                             const bool verbose=false);
         

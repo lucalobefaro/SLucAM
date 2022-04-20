@@ -45,7 +45,6 @@ namespace SLucAM {
                     std::vector<unsigned int>& matches_filter, \
                     std::vector<cv::Point3f>& triangulated_points, \
                     const unsigned int& ransac_iter, \
-                    const float& rotation_only_threshold_rate, \
                     const float& parallax_threshold, \
                     const bool verbose) {
         
@@ -128,10 +127,11 @@ namespace SLucAM {
         estimate_foundamental(p_img1_normalized, p_img2_normalized, matches, matches_filter, F);
         F = T1.t()*F*T2;    // Denormalization
     
-        // Compute pose of image2 w.r.t. image1 from F
+        // Compute pose of image2 w.r.t. image1 (so wrt world) from F
+        // and triangulate inliers
         extract_X_from_F(p_img1, p_img2, matches, matches_filter, \
                             F, K, predicted_pose, triangulated_points);
-
+        
         // Compute the parallax between the two poses   
         std::vector<unsigned int> common_landmarks(triangulated_points.size());
         std::iota(common_landmarks.begin(), common_landmarks.end(), 0);

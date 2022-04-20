@@ -28,10 +28,9 @@ namespace SLucAM {
                                     const std::vector<cv::KeyPoint>& p_img2, \
                                     const std::vector<cv::DMatch>& matches, \
                                     const std::vector<unsigned int>& idxs, \
-                                    const cv::Mat& X, const cv::Mat& K,
+                                    const cv::Mat& pose1, const cv::Mat& pose2, \
+                                    const cv::Mat& K, \
                                     std::vector<cv::Point3f>& triangulated_points);
-    void from_pose_frame_to_world_frame(const cv::Mat& pose, \
-                                    std::vector<cv::Point3f>& points);
     void apply_perturbation_Tmatrix(const cv::Mat& perturbation, \
                                     cv::Mat& T_matrix, const unsigned int& starting_idx);
     cv::Mat invert_transformation_matrix(const cv::Mat& T_matrix);

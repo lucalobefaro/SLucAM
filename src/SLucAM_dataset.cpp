@@ -145,7 +145,7 @@ namespace SLucAM {
         std::getline(imgs_names_file, current_line);
         std::getline(imgs_names_file, current_line);
 
-        // Load all measurements (only the first 100 for now)
+        // Load all measurements (only the first 200 for now)
         int i = 0;
         measurements.reserve(798);
         while(std::getline(imgs_names_file, current_line)) {
