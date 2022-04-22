@@ -19,7 +19,7 @@ using namespace std;
 
 int main() {
 
-    bool synthetic = true;
+    bool synthetic = false;
 
     // -----------------------------------------------------------------------------
     // Create Environment and set variables
@@ -45,7 +45,7 @@ int main() {
     const float kernel_threshold_pose_BA = 10;
     const float damping_factor = 1;
 
-    const unsigned int triangulation_window = 8;
+    const unsigned int local_map_size = 8;
     const float parallax_threshold = 1.0;
     const float new_landmark_threshold = 0.02;
 
@@ -77,7 +77,7 @@ int main() {
     // -----------------------------------------------------------------------------
     // Create Matcher
     // -----------------------------------------------------------------------------
-    SLucAM::Matcher matcher(associations);
+    SLucAM::Matcher matcher;
 
 
     // -----------------------------------------------------------------------------
@@ -136,7 +136,7 @@ int main() {
                                     kernel_threshold_POSIT, \
                                     inliers_threshold_POSIT, \
                                     damping_factor, \
-                                    triangulation_window, \
+                                    local_map_size, \
                                     parallax_threshold, \
                                     new_landmark_threshold, \
                                     verbose);
@@ -193,7 +193,7 @@ int main() {
     
    
     // OTHER TEST
-    if(synthetic) {
+    if(synthetic && verbose) {
         const unsigned int n_posess = state.getPoses().size();
         for(unsigned int i=0; i<n_posess; ++i) {
             cout << "POSE " << i << endl;

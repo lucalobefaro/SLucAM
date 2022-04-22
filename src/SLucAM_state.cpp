@@ -135,7 +135,7 @@ namespace SLucAM {
                                         const float& posit_kernel_threshold, \
                                         const float& posit_threshold_to_ignore, \
                                         const float& posit_damping_factor, \
-                                        const unsigned int& triangulation_window, \
+                                        const unsigned int& local_map_size, \
                                         const float& parallax_threshold, \
                                         const float& new_landmark_threshold, \
                                         const bool verbose) {
@@ -143,61 +143,19 @@ namespace SLucAM {
         // If we have no more measurement to integrate, return error
         if(this->reaminingMeasurements() == 0) return false;
 
-        // Get the last Keyframe
-        const Keyframe& last_keyframe = this->_keyframes.back();
-
-        // Take the measurements to analyze
-        const SLucAM::Measurement& meas1 = \
-                this->_measurements[last_keyframe.getMeasIdx()];
-        const SLucAM::Measurement& meas2 = getNextMeasurement();
-        
-        // Match them
-        std::vector<cv::DMatch> matches;
-        matcher.match_measurements(meas1, meas2, matches);
-        const unsigned int n_matches = matches.size();
-
-        // Create the association vector points<->landmark by using the
-        // matched points for which we already have a 3D point prediction
-        // in the first measurement
-        std::vector<std::pair<unsigned int, unsigned int>> points_associations;
-        int current_3d_point_idx;
-        points_associations.reserve(n_matches); 
-        for(unsigned int i=0; i<n_matches; ++i) {
-            current_3d_point_idx = \
-                last_keyframe.point2Landmark(matches[i].queryIdx);
-            if(current_3d_point_idx != -1) {
-                points_associations.emplace_back(matches[i].trainIdx, \
-                                                current_3d_point_idx);
-            }
-        }
-        points_associations.shrink_to_fit(); 
-        const unsigned int n_points_associations = points_associations.size();
-
-        if(verbose) {
-            std::cout << "-> INTEGRATING NEW MEASUREMENT: " << matches.size() << " matches, " \
-                << n_points_associations << " already seen, ";
-        }
-
-        // If we do not have enough points associations, return error
-        if(n_points_associations < 2) {
-            if(verbose) {
-                std::cout << "too few associations..." << std::endl;
-            }
-            return false;
-        }
+        // Take the measurement to integrate
+        const SLucAM::Measurement& meas_to_integrate = getNextMeasurement();
 
         // Predict the new pose (use previous keyframe's pose as initial guess)
+        std::vector<std::pair<unsigned int, unsigned int>> points_associations;
         const cv::Mat& pose_1 = this->_poses[this->_keyframes.back().getPoseIdx()];
         cv::Mat predicted_pose = pose_1.clone();
-        std::vector<bool> points_associations_filter(n_points_associations, false);
-        const unsigned int n_inliers_posit = perform_Posit(predicted_pose, meas2, \
-                                                            points_associations_filter, \
-                                                            points_associations, \
-                                                            this->_landmarks, this->_K, \
-                                                            posit_n_iters, \
-                                                            posit_kernel_threshold, \
-                                                            posit_threshold_to_ignore, \
-                                                            posit_damping_factor);
+        predictPose(predicted_pose, meas_to_integrate, points_associations, \
+                            matcher, this->_keyframes, \
+                            this->_landmarks, this->_measurements, \
+                            this->_poses, this->_K, \
+                            local_map_size, verbose);
+        const unsigned int n_inliers_posit = points_associations.size();
 
         if(verbose) {
             std::cout << n_inliers_posit << " inliers, ";
@@ -214,29 +172,13 @@ namespace SLucAM {
         // Add the new pose
         this->_poses.emplace_back(predicted_pose);
 
-        // Filter out the points associations maintaining only the inliers 
-        // extracted from POSIT
-        std::vector<std::pair<unsigned int, unsigned int>> points_associations_filtered;
-        points_associations_filtered.reserve(n_points_associations);
-        for(unsigned int i=0; i<n_points_associations; ++i) {
-            if(points_associations_filter[i]) {
-                points_associations_filtered.emplace_back(points_associations[i]);
-            }
-        }
-        points_associations_filtered.shrink_to_fit();
-
-        if(verbose) {
-            std::cout << points_associations_filtered.size() << " added to meas2" << \
-                std::endl << "\t";
-        }
-
         // Use the new pose/measure as keyframe
         addKeyFrame(this->_next_measurement_idx-1, this->_poses.size()-1, \
-                points_associations_filtered, this->_keyframes.size()-1, verbose);
+                points_associations, this->_keyframes.size()-1, verbose);
 
         // If requested add new landmarks triangulating 
         // new matches between the last integrated keyframe and the last n 
-        // (specified by triangulation_window) keyframes
+        // (specified by local_map_size) keyframes
         if(triangulate_new_points) {
             
             triangulateNewPoints(this->_keyframes, \
@@ -245,7 +187,7 @@ namespace SLucAM {
                                 this->_poses, \
                                 matcher, \
                                 this->_K, \
-                                triangulation_window, \
+                                local_map_size, \
                                 new_landmark_threshold, \
                                 parallax_threshold, \
                                 verbose);
@@ -272,7 +214,6 @@ namespace SLucAM {
 
         // Create optimizer
         g2o::SparseOptimizer optimizer;
-        optimizer.setVerbose(false);
         std::unique_ptr<g2o::BlockSolver_6_3::LinearSolverType> linearSolver;
         linearSolver= g2o::make_unique<g2o::LinearSolverDense<g2o::BlockSolver_6_3::PoseMatrixType>>();
         g2o::OptimizationAlgorithmLevenberg* solver =
@@ -415,6 +356,155 @@ namespace SLucAM {
             std::cout << "NEW KEYFRAME ADDED (meas:" << meas_idx << \
                 ", pose:" << pose_idx << ")" << std::endl; 
         }
+
+    }
+
+
+
+    /*
+    * This function, given a measurement, predict its pose, by using an 
+    * initial guess and all the seen landmarks, already triangulated, from 
+    * such measurement. It uses projective ICP.
+    * Inputs:
+    *   guessedPose: initial guess for projective ICP (output)
+    *   measurement: measurement for which predict the pose
+    *   points_associations_inliers: a vector containing all the associations 2D points
+    *       <-> 3D points for the measurement analyzed (it contains only "inliers")
+    *   all the useful state infos and the matcher
+    *   local_map_size: the number of keyframes to analyze in order to
+    *       understand which landmarks are seen from the current measurement
+    *       (starting from the last keyframe)
+    */
+    void State::predictPose(cv::Mat& guessed_pose, \
+                            const Measurement& meas_to_predict, \
+                            std::vector<std::pair<unsigned int, unsigned int>>& \
+                                        points_associations_inliers, \
+                            Matcher& matcher, \
+                            const std::vector<Keyframe>& keyframes, \
+                            const std::vector<cv::Point3f>& landmarks, \
+                            const std::vector<Measurement>& measurements, \
+                            const std::vector<cv::Mat>& poses, \
+                            const cv::Mat& K, \
+                            const unsigned int& local_map_size, \
+                            const bool& verbose) {
+        
+        // Initialization
+        const unsigned int n_keyframes = keyframes.size();
+        const float fx = K.at<float>(0,0);
+        const float fy = K.at<float>(1,1);
+        const float cx = K.at<float>(0,2);
+        const float cy = K.at<float>(1,2);
+        std::vector<std::pair<unsigned int, unsigned int>> points_associations;
+        std::vector<g2o::EdgeSE3ProjectXYZOnlyPose*> graph_edges;
+
+        // We need to consider world w.r.t. pose
+        guessed_pose = invert_transformation_matrix(guessed_pose);
+
+        // Adjust the local map size according to the number of keyframes
+        unsigned int window = local_map_size;
+        if(local_map_size > n_keyframes) {
+            window = n_keyframes;
+        }
+
+        // Create optimizer
+        g2o::SparseOptimizer optimizer;
+        std::unique_ptr<g2o::BlockSolver_6_3::LinearSolverType> linearSolver;
+        linearSolver= g2o::make_unique<g2o::LinearSolverDense<g2o::BlockSolver_6_3::PoseMatrixType>>();
+        g2o::OptimizationAlgorithmLevenberg* solver =
+            new g2o::OptimizationAlgorithmLevenberg(
+                g2o::make_unique<g2o::BlockSolver_6_3>(std::move(linearSolver)));
+        optimizer.setAlgorithm(solver);
+
+        // Set the pose to optimize
+        g2o::VertexSE3Expmap* vPose = new g2o::VertexSE3Expmap();
+        vPose->setEstimate(transformation_matrix_to_SE3Quat(guessed_pose));
+        vPose->setId(0);
+        vPose->setFixed(false);
+        optimizer.addVertex(vPose);
+
+        // For each measurement in the window
+        for(unsigned int window_idx=1; window_idx<window+1; ++window_idx) {
+
+            // Take the current keyframe's measurement
+            const Keyframe& current_keyframe = keyframes[n_keyframes-window_idx];
+            const Measurement& current_meas = measurements[current_keyframe.getMeasIdx()];
+            
+            // Match the current measurement with the measure to predict
+            std::vector<cv::DMatch> matches;
+            matcher.match_measurements(current_meas, meas_to_predict, matches);
+            const unsigned int n_matches = matches.size();
+
+            // For each match search for that for which we have already a 3D point
+            // predicted     
+            int current_3d_point_idx;
+            points_associations.reserve(points_associations.size()+n_matches);
+            graph_edges.reserve(graph_edges.size()+n_matches);
+            for(unsigned int i=0; i<n_matches; ++i) {
+
+                // Get the idx of the landmark for this association (if not we have -1)
+                current_3d_point_idx = \
+                    current_keyframe.point2Landmark(matches[i].queryIdx);
+                
+                // If we have a predicted point for this association and we have not
+                // already used it
+                if( (current_3d_point_idx != -1) && \
+                    (!containsLandmark(points_associations, current_3d_point_idx))) {
+                    
+                    // Add it as point association
+                    points_associations.emplace_back(matches[i].trainIdx, \
+                                                current_3d_point_idx);
+
+                    // Use this association as new edge for the optimization graph
+                    const cv::KeyPoint point2D = meas_to_predict.getPoints()[matches[i].trainIdx];
+                    const cv::Point3f point3D = landmarks[current_3d_point_idx];
+                    g2o::EdgeSE3ProjectXYZOnlyPose* e = new g2o::EdgeSE3ProjectXYZOnlyPose();
+                    e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(0)));
+                    e->setMeasurement(point_2d_to_vector_2d(point2D));
+                    e->setInformation(Eigen::Matrix2d::Identity());
+                    e->setRobustKernel(new g2o::RobustKernelHuber);
+                    e->fx = fx;
+                    e->fy = fy;
+                    e->cx = cx;
+                    e->cy = cy;
+                    e->Xw[0] = point3D.x;
+                    e->Xw[1] = point3D.y;
+                    e->Xw[2] = point3D.z;
+                    optimizer.addEdge(e);
+
+                    // Add the reference to a vector to keep acces to it
+                    graph_edges.emplace_back(e);
+                }
+
+            }
+        }
+        points_associations.shrink_to_fit();
+        graph_edges.shrink_to_fit();
+
+        // Optimize
+        // TODO: set n_iters manually
+        optimizer.initializeOptimization();
+        optimizer.setVerbose(false);
+        optimizer.optimize(50);
+
+        // Mantain only the inliers
+        const unsigned int n_associations = points_associations.size();
+        points_associations_inliers.reserve(n_associations);
+        for(unsigned int i=0; i<n_associations; ++i) {
+            g2o::EdgeSE3ProjectXYZOnlyPose* current_edge = graph_edges[i];
+            if(current_edge->chi2() <= 5.991) {  // TODO: set it manually
+                points_associations_inliers.emplace_back(points_associations[i]);
+            }
+        }
+        points_associations_inliers.shrink_to_fit();
+
+        // Recover optimized pose
+        guessed_pose = SE3Quat_to_transformation_matrix(\
+                            static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(0))\
+                                ->estimate() \
+                        );
+
+        // Go back to pose wrt world representation
+        guessed_pose = invert_transformation_matrix(guessed_pose);
 
     }
 
@@ -691,6 +781,23 @@ namespace SLucAM {
                     " invalid, " << n_filtered_points << " filtered out)" << std::endl;
         }
 
+    }
+
+
+    /*
+    * Function that tells us if a vector containing associations 2D point <-> 3D point
+    * contains a given 3D point idx (landmark_idx)
+    */
+    bool State::containsLandmark(const std::vector<std::pair<unsigned int, \
+                                                unsigned int>>& points_associations, \
+                                            const unsigned int& landmark_idx) {
+        const unsigned int& n_associations = points_associations.size();
+        for(unsigned int i=0; i<n_associations; ++i) {
+            if(points_associations[i].second == landmark_idx) {
+                return true;
+            }
+        }
+        return false;
     }
 
 } // namespace SLucAM

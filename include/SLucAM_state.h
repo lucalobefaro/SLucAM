@@ -160,7 +160,7 @@ namespace SLucAM {
                                     const float& posit_kernel_threshold=1000, \
                                     const float& posit_threshold_to_ignore=5000, \
                                     const float& posit_damping_factor=1, \
-                                    const unsigned int& triangulation_window=6, \
+                                    const unsigned int& local_map_size=6, \
                                     const float& parallax_threshold=1.0, \
                                     const float& new_landmark_threshold=0.02, \
                                     const bool verbose=false);
@@ -195,6 +195,19 @@ namespace SLucAM {
     
     private: 
 
+        static void predictPose(cv::Mat& guessed_pose, \
+                                const Measurement& meas_to_predict, \
+                                std::vector<std::pair<unsigned int, unsigned int>>& \
+                                        points_associations, \
+                                Matcher& matcher, \
+                                const std::vector<Keyframe>& keyframes, \
+                                const std::vector<cv::Point3f>& landmarks, \
+                                const std::vector<Measurement>& measurements, \
+                                const std::vector<cv::Mat>& poses, \
+                                const cv::Mat& K, \
+                                const unsigned int& local_map_size, \
+                                const bool& verbose=false);
+
         static void triangulateNewPoints(std::vector<Keyframe>& keyframes, \
                                         std::vector<cv::Point3f>& landmarks, \
                                         const std::vector<Measurement>& measurements, \
@@ -217,6 +230,10 @@ namespace SLucAM {
                                         const bool& filter_near_points, \
                                         const float& new_landmark_threshold, \
                                         const bool verbose=false);
+        
+        static bool containsLandmark(const std::vector<std::pair<unsigned int, \
+                                                unsigned int>>& points_associations, \
+                                            const unsigned int& landmark_idx);
     
         // Camera matrix
         cv::Mat _K;
