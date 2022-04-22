@@ -143,6 +143,10 @@ namespace SLucAM {
         // If we have no more measurement to integrate, return error
         if(this->reaminingMeasurements() == 0) return false;
 
+        if(verbose) {
+            std::cout << "-> INTEGRATING NEW MEASUREMENT: ";
+        }
+
         // Take the measurement to integrate
         const SLucAM::Measurement& meas_to_integrate = getNextMeasurement();
 
@@ -150,23 +154,17 @@ namespace SLucAM {
         std::vector<std::pair<unsigned int, unsigned int>> points_associations;
         const cv::Mat& pose_1 = this->_poses[this->_keyframes.back().getPoseIdx()];
         cv::Mat predicted_pose = pose_1.clone();
-        predictPose(predicted_pose, meas_to_integrate, points_associations, \
+        if(!predictPose(predicted_pose, meas_to_integrate, points_associations, \
                             matcher, this->_keyframes, \
                             this->_landmarks, this->_measurements, \
                             this->_poses, this->_K, \
-                            local_map_size, verbose);
+                            local_map_size, verbose)) {
+            return false;
+        }
         const unsigned int n_inliers_posit = points_associations.size();
 
         if(verbose) {
-            std::cout << n_inliers_posit << " inliers, ";
-        }
-
-        // If projective ICP does not have finded enough inliers, return error
-        if(n_inliers_posit < 2) {
-            if(verbose) {
-                std::cout << "too few inliers..." << std::endl;
-            }
-            return false;
+            std::cout << std::endl << "\t";
         }
 
         // Add the new pose
@@ -374,8 +372,10 @@ namespace SLucAM {
     *   local_map_size: the number of keyframes to analyze in order to
     *       understand which landmarks are seen from the current measurement
     *       (starting from the last keyframe)
+    * Output:
+    *   true if the pose has been predicted, false otherwise
     */
-    void State::predictPose(cv::Mat& guessed_pose, \
+    bool State::predictPose(cv::Mat& guessed_pose, \
                             const Measurement& meas_to_predict, \
                             std::vector<std::pair<unsigned int, unsigned int>>& \
                                         points_associations_inliers, \
@@ -396,9 +396,6 @@ namespace SLucAM {
         const float cy = K.at<float>(1,2);
         std::vector<std::pair<unsigned int, unsigned int>> points_associations;
         std::vector<g2o::EdgeSE3ProjectXYZOnlyPose*> graph_edges;
-
-        // We need to consider world w.r.t. pose
-        guessed_pose = invert_transformation_matrix(guessed_pose);
 
         // Adjust the local map size according to the number of keyframes
         unsigned int window = local_map_size;
@@ -479,6 +476,19 @@ namespace SLucAM {
         }
         points_associations.shrink_to_fit();
         graph_edges.shrink_to_fit();
+        const unsigned int n_points_associations = points_associations.size();
+
+        if(verbose) {
+            std::cout << n_points_associations << " points already seen, ";
+        }
+
+        // If we do not have enough points associations, return error
+        if(n_points_associations < 2) {
+            if(verbose) {
+                std::cout << "too few associations..." << std::endl;
+            }
+            return false;
+        }
 
         // Optimize
         // TODO: set n_iters manually
@@ -496,15 +506,28 @@ namespace SLucAM {
             }
         }
         points_associations_inliers.shrink_to_fit();
+        const unsigned int n_inliers = points_associations_inliers.size();
+
+        if(verbose) {
+            std::cout << n_inliers << " inliers, ";
+        }
+
+        // Check if we have at least 3 inliers (the minimal set of points
+        // to have a "good" constrained problem)
+        if(n_inliers < 3) {
+            if(verbose) {
+                std::cout << "too few inliers..." << std::endl;
+            }
+            return false;
+        }
 
         // Recover optimized pose
         guessed_pose = SE3Quat_to_transformation_matrix(\
                             static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(0))\
                                 ->estimate() \
                         );
-
-        // Go back to pose wrt world representation
-        guessed_pose = invert_transformation_matrix(guessed_pose);
+        
+        return true;
 
     }
 

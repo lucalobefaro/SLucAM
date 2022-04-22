@@ -19,7 +19,7 @@ using namespace std;
 
 int main() {
 
-    bool synthetic = false;
+    bool synthetic = true;
 
     // -----------------------------------------------------------------------------
     // Create Environment and set variables
@@ -77,7 +77,8 @@ int main() {
     // -----------------------------------------------------------------------------
     // Create Matcher
     // -----------------------------------------------------------------------------
-    SLucAM::Matcher matcher;
+    //SLucAM::Matcher matcher;
+    SLucAM::Matcher matcher(associations);
 
 
     // -----------------------------------------------------------------------------
@@ -155,6 +156,7 @@ int main() {
     SLucAM::save_poses(dataset_folder, state.getPoses());
     SLucAM::save_landmarks(dataset_folder, state.getLandmarks());
     */
+    if(!synthetic) SLucAM::save_TUM_results("../data/datasets/tum_dataset_teddy/", state);
 
 
     /* -----------------------------------------------------------------------------

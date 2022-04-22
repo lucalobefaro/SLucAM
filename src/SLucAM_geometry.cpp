@@ -90,7 +90,7 @@ namespace SLucAM {
     *   matches: all matches between p_img1 and p_img2, with outliers
     *   idxs: we will consider only those points contained in 
     *           the matches vector, for wich we have indices in this vector idxs
-    *   pose1/pose2: pose of the two cameras
+    *   pose1/pose2: pose of the two cameras (world wrt camera)
     *   K: camera matrix of the two cameras
     *   triangulated_points: vector where to store the triangulated points
     *       (expressed w.r.t. world)
@@ -115,8 +115,9 @@ namespace SLucAM {
         const cv::Mat inv_K = K.inv();
 
         // Compute the projection matrix for camera 1 (with references)
-        //  P1 = R1*K.inv()
-        const cv::Mat P1 = pose1.rowRange(0,3).colRange(0,3)*inv_K;
+        //  P1 = R1'*K.inv()
+        const cv::Mat pose1_inv = invert_transformation_matrix(pose1);
+        const cv::Mat P1 = pose1_inv.rowRange(0,3).colRange(0,3)*inv_K;
         const float& P1_11 = P1.at<float>(0,0);
         const float& P1_12 = P1.at<float>(0,1);
         const float& P1_13 = P1.at<float>(0,2);
@@ -128,8 +129,9 @@ namespace SLucAM {
         const float& P1_33 = P1.at<float>(2,2);
 
         // Compute the projection matrix for camera 2 (with references)
-        //  P2 = R2*K.inv()
-        const cv::Mat P2 = pose2.rowRange(0,3).colRange(0,3)*inv_K;
+        //  P2 = R2'*K.inv()
+        const cv::Mat pose2_inv = invert_transformation_matrix(pose2);
+        const cv::Mat P2 = pose2_inv.rowRange(0,3).colRange(0,3)*inv_K;
         const float& P2_11 = P2.at<float>(0,0);
         const float& P2_12 = P2.at<float>(0,1);
         const float& P2_13 = P2.at<float>(0,2);
@@ -141,13 +143,13 @@ namespace SLucAM {
         const float& P2_33 = P2.at<float>(2,2);
 
         // Take references to the position of the origin of camera 1
-        cv::Mat O1 = pose1.col(3).rowRange(0,3);
+        cv::Mat O1 = pose1_inv.col(3).rowRange(0,3);
         const float& O1_x = O1.at<float>(0);
         const float& O1_y = O1.at<float>(1);
         const float& O1_z = O1.at<float>(2);
 
         // Take references to the position of the origin of camera 2
-        cv::Mat O2 = pose2.col(3).rowRange(0,3);
+        cv::Mat O2 = pose2_inv.col(3).rowRange(0,3);
         const float& O2_x = O2.at<float>(0);
         const float& O2_y = O2.at<float>(1);
         const float& O2_z = O2.at<float>(2);
@@ -593,29 +595,30 @@ namespace SLucAM {
         // Initialization
         unsigned int n_points = idxs.size();
 
-        // Ensemble the H matrix
-        cv::Mat H = cv::Mat::zeros(9,9,CV_32F);
-        cv::Mat A = cv::Mat::ones(1,9,CV_32F);
+        // Ensemble the A matrix
+        cv::Mat A = cv::Mat::ones(n_points,9,CV_32F);
         for(unsigned int i = 0; i<n_points; ++i) {
             const float& p1_x = p_img1[matches[idxs[i]].queryIdx].pt.x;
             const float& p1_y = p_img1[matches[idxs[i]].queryIdx].pt.y;
             const float& p2_x = p_img2[matches[idxs[i]].trainIdx].pt.x;
             const float& p2_y = p_img2[matches[idxs[i]].trainIdx].pt.y;
-            A.at<float>(0,0) = p1_x * p2_x;
-            A.at<float>(0,1) = p1_y * p2_x;
-            A.at<float>(0,2) = p2_x;
-            A.at<float>(0,3) = p1_x * p2_y;
-            A.at<float>(0,4) = p1_y * p2_y;
-            A.at<float>(0,5) = p2_y;
-            A.at<float>(0,6) = p1_x;
-            A.at<float>(0,7) = p1_y;
-            H += A.t()*A;
+            A.at<float>(i,0) = p1_x * p2_x;
+            A.at<float>(i,1) = p1_y * p2_x;
+            A.at<float>(i,2) = p2_x;
+            A.at<float>(i,3) = p1_x * p2_y;
+            A.at<float>(i,4) = p1_y * p2_y;
+            A.at<float>(i,5) = p2_y;
+            A.at<float>(i,6) = p1_x;
+            A.at<float>(i,7) = p1_y;
         }
 
-        // Extract the right eigenvalues from H and build the F matrix
+        // Extract the F matrix (cam 1 wrt cam 2)
         cv::Mat u,w,vt;
-        cv::SVDecomp(H,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
-        F = vt.row(8).reshape(0,3).t();
+        cv::SVDecomp(A,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
+        cv::Mat Fpre = vt.row(8).reshape(0,3);
+        cv::SVDecomp(Fpre,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
+        w.at<float>(2)=0;
+        F = u*cv::Mat::diag(w)*vt;
     }
 
 
@@ -692,8 +695,8 @@ namespace SLucAM {
     *   F: Foundamental Matrix from which to extract X
     *   K: camera matrix
     *   X: output Transformation Matrix extracted from F [R|t]
-    *   triangulated_points: points triangulated between the first pose (assumed
-    *       at the origin) and the pose X extracted from F
+    *   triangulated_points: points triangulated between the first pose
+    *           and the pose X extracted from F
     */
     void extract_X_from_F(const std::vector<cv::KeyPoint>& p_img1, \
                             const std::vector<cv::KeyPoint>& p_img2, \
@@ -722,10 +725,10 @@ namespace SLucAM {
         // Extract the R matrix (2 solutions)
         cv::Mat R1 = u*W_mat*vt;
         if(cv::determinant(R1) < 0) {   // right handed condition
-            R1 = -R1;
+            R1=-R1;
         }
         cv::Mat R2 = u*W_mat.t()*vt;
-        if(cv::determinant(R2) < 0) {
+        if(cv::determinant(R2) < 0) {   // right handed condition
             R2=-R2;
         }
 
@@ -735,7 +738,7 @@ namespace SLucAM {
         t=t/cv::norm(t);
 
         // Scale t vector
-        t /= 4.4;
+        t /= 10;
 
         // Evaluate first solution
         X_pred.at<float>(0,0) = R1.at<float>(0,0);
@@ -753,6 +756,8 @@ namespace SLucAM {
         current_score = triangulate_points(p_img1, p_img2, matches, idxs, \
                                     pose1, X_pred, K, \
                                     current_triangulated_points);
+        std::cout << "SCORE: " << current_score << std::endl;
+        std::cout << X_pred << std::endl << std::endl;
         if(current_score > best_score) {
             best_score = current_score;
             X = X_pred.clone();
@@ -767,6 +772,8 @@ namespace SLucAM {
         current_score = triangulate_points(p_img1, p_img2, matches, idxs, \
                                     pose1, X_pred, K, \
                                     current_triangulated_points);
+        std::cout << "SCORE: " << current_score << std::endl;
+        std::cout << X_pred << std::endl << std::endl;
         if(current_score > best_score) {
             best_score = current_score;
             X = X_pred.clone();
@@ -790,6 +797,8 @@ namespace SLucAM {
         current_score = triangulate_points(p_img1, p_img2, matches, idxs, \
                                     pose1, X_pred, K, \
                                     current_triangulated_points);
+        std::cout << "SCORE: " << current_score << std::endl;
+        std::cout << X_pred << std::endl << std::endl;
         if(current_score > best_score) {
             best_score = current_score;
             X = X_pred.clone();
@@ -804,6 +813,8 @@ namespace SLucAM {
         current_score = triangulate_points(p_img1, p_img2, matches, idxs, \
                                     pose1, X_pred, K, \
                                     current_triangulated_points);
+        std::cout << "SCORE: " << current_score << std::endl;
+        std::cout << X_pred << std::endl << std::endl;
         if(current_score > best_score) {
             best_score = current_score;
             X = X_pred.clone();

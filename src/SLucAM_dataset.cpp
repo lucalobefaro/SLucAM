@@ -263,11 +263,7 @@ namespace SLucAM {
         // the rotational part to quaternion format
         const unsigned int n_poses = state.getPoses().size();
         for(unsigned int i=0; i<n_poses; ++i) {
-            const cv::Mat current_pose = base_pose*state.getPoses()[i];
-
-            std::cout << state.getPoses()[i] << std::endl;
-            std::cout << current_pose << std::endl;
-
+            const cv::Mat current_pose = base_pose*invert_transformation_matrix(state.getPoses()[i]);
             cv::Mat current_quat;
             matrix_to_quaternion(current_pose.rowRange(0,3).colRange(0,3), \
                     current_quat);

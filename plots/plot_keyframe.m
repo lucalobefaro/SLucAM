@@ -53,7 +53,7 @@ function res = plot_keyframe(folder, idx)
     hold on;
     %set(gca,'XColor','none','YColor','none','ZColor','none');
     xlabel("x"); ylabel("y"); zlabel("z");
-    view([0 -60]);
+    view([180 -60]);
     %axis([-10 10 -10 10 -0.3 30])
     axis([-2 2 -2 2 -0.3 5])
     camproj('perspective');

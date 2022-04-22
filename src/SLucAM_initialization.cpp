@@ -29,7 +29,7 @@ namespace SLucAM {
     *   meas1/meas2: the measurements to use to perform initialization
     *   matcher: tool to use to match the points between the measurements
     *   K: camera matrix of the camera used to take the measurements
-    *   predicted_pose: the pose of the meas2 w.r.t. pose1
+    *   predicted_pose: the pose of the meas2 (world wrt camera)
     *   triangulated_points: all the points triangulated from the matches
     *   ransac_iter
     *   rotation_only_threshold_rate: threshold to understand if we have a 
@@ -125,9 +125,9 @@ namespace SLucAM {
         // Compute F on all inliers (its best version)
         cv::Mat F;
         estimate_foundamental(p_img1_normalized, p_img2_normalized, matches, matches_filter, F);
-        F = T1.t()*F*T2;    // Denormalization
+        F = T2.t()*F*T1;    // Denormalization
     
-        // Compute pose of image2 w.r.t. image1 (so wrt world) from F
+        // Compute pose of camera 2 (world wrt cam2) from F
         // and triangulate inliers
         extract_X_from_F(p_img1, p_img2, matches, matches_filter, \
                             F, K, predicted_pose, triangulated_points);
@@ -201,9 +201,9 @@ namespace SLucAM {
 
             // Compute the square distance between point 2 and point 1 
             // projected in the image 2
-            Fp1 = F11*p1_x + F21*p1_y + F31;
-            Fp2 = F12*p1_x + F22*p1_y + F32;
-            Fp3 = F13*p1_x + F23*p1_y + F33;
+            Fp1 = F11*p1_x + F12*p1_y + F13;
+            Fp2 = F21*p1_x + F22*p1_y + F23;
+            Fp3 = F31*p1_x + F32*p1_y + F33;
             d1 = pow(Fp1*p2_x+Fp2*p2_y+Fp3, 2)/(pow(Fp1, 2) + pow(Fp2, 2));
 
             // If the distance of this reprojection is over the threshold
@@ -216,9 +216,9 @@ namespace SLucAM {
 
             // Compute the square distance between point 1 and point 2 
             // projected in the image 1
-            Fp1 = F11*p2_x + F12*p2_y + F13;
-            Fp2 = F21*p2_x + F22*p2_y + F23;
-            Fp3 = F31*p2_x + F32*p2_y + F33;
+            Fp1 = F11*p2_x + F21*p2_y + F31;
+            Fp2 = F12*p2_x + F22*p2_y + F32;
+            Fp3 = F13*p2_x + F23*p2_y + F33;
             d2 = pow(Fp1*p1_x+Fp2*p1_y+Fp3, 2)/(pow(Fp1, 2) + pow(Fp2, 2));
 
             // If the distance of this reprojection is over the threshold
@@ -403,7 +403,7 @@ namespace SLucAM {
             estimate_foundamental(p_img1_normalized, p_img2_normalized, matches, rand_idxs[iter], F);
 
             // Denormalize F
-            F = T1.t()*F*T2;
+            F = T2.t()*F*T1;
             
             // Compute the score with the current F
             current_score = evaluate_foundamental(p_img1, p_img2, \

@@ -195,7 +195,7 @@ namespace SLucAM {
     
     private: 
 
-        static void predictPose(cv::Mat& guessed_pose, \
+        static bool predictPose(cv::Mat& guessed_pose, \
                                 const Measurement& meas_to_predict, \
                                 std::vector<std::pair<unsigned int, unsigned int>>& \
                                         points_associations, \
@@ -241,11 +241,12 @@ namespace SLucAM {
         // The vector containing all the measurements, ordered by time
         std::vector<Measurement> _measurements;
      
-        // The vector containing all the poses, ordered by time
+        // The vector containing all the poses, ordered by time (poses of
+        // the world wrt cameras)
         std::vector<cv::Mat> _poses;
 
         // The vector containing all the triangulated points, ordered
-        // by insertion
+        // by insertion (in world frame)
         std::vector<cv::Point3f> _landmarks;
 
         // This vector contains all the keyframe

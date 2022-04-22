@@ -6,4 +6,5 @@ data/datasets/
 TODO.txt
 results/
 plots/images/
+plots/videos/
 plots/*.asv
