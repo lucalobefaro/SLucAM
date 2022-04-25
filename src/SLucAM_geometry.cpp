@@ -14,6 +14,7 @@
 #include <Eigen/Eigen>
 #include <Eigen/SVD>
 #include <opencv2/core/core.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
 
 // TODO delete this
 #include <iostream>
@@ -514,6 +515,45 @@ namespace SLucAM {
         return std::acos(min_50th_parallax)*180 / CV_PI;
 
     }
+
+
+
+    /*
+    * Undistort the keypoints extracted from an image, using the
+    * distorsion coefficients given from the camera calibration.
+    */
+    void undistort_keypoints(const std::vector<cv::KeyPoint>& keypoints, \
+                            std::vector<cv::KeyPoint>& undistorted_keypoints, \
+                            const cv::Mat& distorsion_coefficients, \
+                            const cv::Mat& K) {
+        
+        // Initialization
+        const unsigned int n_points = keypoints.size();
+        undistorted_keypoints.reserve(n_points);
+        cv::Mat keypoints_matrix(n_points,2,CV_32F);
+        cv::Mat undistorted_keypoints_matrix(n_points,2,CV_32F);
+        
+        // Create a matrix of keypoints
+        for(int i=0; i<n_points; i++) {
+            keypoints_matrix.at<float>(i,0)=keypoints[i].pt.x;
+            keypoints_matrix.at<float>(i,1)=keypoints[i].pt.y;
+        }
+
+        // Undistort points
+        keypoints_matrix = keypoints_matrix.reshape(2);
+        cv::undistortPoints(keypoints_matrix, keypoints_matrix,\
+                            K, distorsion_coefficients, cv::Mat(), K);
+        keypoints_matrix = keypoints_matrix.reshape(1);
+
+        // Fill the undistorted keypoint vector
+        for(int i=0; i<n_points; i++)
+        {
+            cv::KeyPoint undistorted_point = keypoints[i];
+            undistorted_point.pt.x = keypoints_matrix.at<float>(i,0);
+            undistorted_point.pt.y = keypoints_matrix.at<float>(i,1);
+            undistorted_keypoints.emplace_back(undistorted_point);
+        }
+    }
     
 } // namespace SLucAM
 
@@ -839,6 +879,8 @@ namespace SLucAM {
         current_score = compute_transformation_inliers(p_img1, p_img2, matches, matches_filter, \
                                                        current_matches_filter, R1, t1, K);
         std::cout << std::endl << "SCORE 1 " << current_score << std::endl;
+        std::cout << R1 << std::endl;
+        std::cout << t1 << std::endl << std::endl;
         if(current_score > best_score) {
             best_score = current_score;
             R = R1.clone();
@@ -850,6 +892,8 @@ namespace SLucAM {
         current_score = compute_transformation_inliers(p_img1, p_img2, matches, matches_filter, \
                                                         current_matches_filter, R1, t2, K);
         std::cout << "SCORE 2 " << current_score << std::endl;
+        std::cout << R1 << std::endl;
+        std::cout << t2 << std::endl << std::endl;
         if(current_score > best_score) {
             best_score = current_score;
             R = R1.clone();
@@ -861,6 +905,8 @@ namespace SLucAM {
         current_score = compute_transformation_inliers(p_img1, p_img2, matches, matches_filter, \
                                                         current_matches_filter, R2, t1, K);
         std::cout << "SCORE 3 " << current_score << std::endl;
+        std::cout << R2 << std::endl;
+        std::cout << t1 << std::endl << std::endl;
         if(current_score > best_score) {
             best_score = current_score;
             R = R2.clone();
@@ -871,7 +917,9 @@ namespace SLucAM {
         // Evaluate fourth solution
         current_score = compute_transformation_inliers(p_img1, p_img2, matches, matches_filter, \
                                                         current_matches_filter, R2, t2, K);
-        std::cout << "SCORE 4 " << current_score << std::endl << std::endl;
+        std::cout << "SCORE 4 " << current_score << std::endl;
+        std::cout << R2 << std::endl;
+        std::cout << t2 << std::endl << std::endl;
         if(current_score > best_score) {
             best_score = current_score;
             R = R2.clone();
@@ -886,6 +934,9 @@ namespace SLucAM {
         R.copyTo(X.rowRange(0,3).colRange(0,3));
         t.copyTo(X.rowRange(0,3).col(3));
         matches_filter.swap(best_matches_filter);
+
+        std::cout << "BEST X: " << std::endl << X \
+                << std::endl << std::endl;
 
     }
 

@@ -21,28 +21,17 @@ namespace SLucAM {
 
     /*
     * Load an image, checking for the consistency of the inputs,
-    * in case of errors it returns "false". It also undistort the
-    * image, if required.
+    * in case of errors it returns "false".
     * Inputs:
     *   filename: relative path of the image to load
     *   img: OpenCV Matrix object where the image will be loaded
-    *   K: it is useful when we need to perform undistorsion
-    *   distorsion_coefficients: if passed as input the image
-    *       will be undistorted
     */
-    bool load_image(const std::string& filename, cv::Mat& img, \
-                    const cv::Mat& K, \
-                    const cv::Mat& distorsion_coefficients) {
-        img = cv::imread(filename, cv::IMREAD_COLOR);
+    bool load_image(const std::string& filename, cv::Mat& img) {
+        img = cv::imread(filename, cv::IMREAD_UNCHANGED);
         if (img.empty()) {
             return false;
         }
-        cv::cvtColor(img, img, cv::COLOR_BGR2GRAY);
-        if(!distorsion_coefficients.empty()) {
-            cv::Mat undistorted_img;
-            cv::undistort(img, undistorted_img, K, distorsion_coefficients);
-            img = undistorted_img;
-        }
+        cv::cvtColor(img, img, cv::COLOR_RGB2GRAY);
         return true;
     }
 

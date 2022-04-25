@@ -23,7 +23,7 @@ namespace SLucAM {
     /*
     * Constructor of the class Measurement. It takes the vector of points
     * for a given measurements and the relative image descriptors. It
-    * normalize the points also
+    * normalizes the points also
     */
     Measurement::Measurement(std::vector<cv::KeyPoint>& points, \
                             cv::Mat& descriptors) {

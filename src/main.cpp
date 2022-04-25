@@ -28,7 +28,7 @@ int main() {
     if(synthetic) 
         dataset_folder = "../data/datasets/my_synthetic_dataset/";
     else
-        dataset_folder = "../data/datasets/tum_dataset_2/";
+        dataset_folder = "../data/datasets/tum_dataset_teddy/";
     const std::string results_folder = "../results/";
 
     const unsigned int n_orb_features = 1000;

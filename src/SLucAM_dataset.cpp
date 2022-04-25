@@ -60,8 +60,7 @@ namespace SLucAM {
             current_filename = dataset_folder+current_filename;
 
             // Load the measurement
-            if(!load_image(current_filename, current_img, \
-                            K, distorsion_coefficients))
+            if(!load_image(current_filename, current_img))
                 return false;
             
             // Detect keypoints
@@ -70,8 +69,14 @@ namespace SLucAM {
             detector->detectAndCompute(current_img, cv::Mat(), \
                                             points, descriptors);
 
+            // Undistort keypoints
+            std::vector<cv::KeyPoint> undistorted_points;
+            undistort_keypoints(points, undistorted_points, \
+                                distorsion_coefficients, K);
+
             // Create new measurement
-            measurements.emplace_back(Measurement(points, descriptors));
+            measurements.emplace_back(Measurement(undistorted_points, \
+                                        descriptors));
 
             // Memorize the name of the image
             measurements.back().setImgName(current_filename);
@@ -100,10 +105,10 @@ namespace SLucAM {
     * It returns false in case of errors.
     */
     bool load_camera_matrix(const std::string& filename, cv::Mat& K, \
-                            cv::Mat& distorsion_parameters) {
+                            cv::Mat& distorsion_coefficients) {
 
         K = cv::Mat::zeros(3,3,CV_32F);
-        distorsion_parameters = cv::Mat::zeros(1,5,CV_32F);
+        distorsion_coefficients = cv::Mat::zeros(1,5,CV_32F);
 
         std::fstream camera_file;
         camera_file.open(filename);
@@ -112,11 +117,11 @@ namespace SLucAM {
             K.at<float>(0,0) >> K.at<float>(0,1) >> K.at<float>(0,2) >> \
             K.at<float>(1,0) >> K.at<float>(1,1) >> K.at<float>(1,2) >> \
             K.at<float>(2,0) >> K.at<float>(2,1) >> K.at<float>(2,2) >> \
-            distorsion_parameters.at<float>(0,0) >> \
-            distorsion_parameters.at<float>(0,1) >> \
-            distorsion_parameters.at<float>(0,2) >> \
-            distorsion_parameters.at<float>(0,3) >> \
-            distorsion_parameters.at<float>(0,4);
+            distorsion_coefficients.at<float>(0,0) >> \
+            distorsion_coefficients.at<float>(0,1) >> \
+            distorsion_coefficients.at<float>(0,2) >> \
+            distorsion_coefficients.at<float>(0,3) >> \
+            distorsion_coefficients.at<float>(0,4);
         camera_file.close();
 
         return true;
@@ -170,8 +175,7 @@ namespace SLucAM {
             current_img_filename = dataset_folder+current_img_filename;
 
             // Load the measurement (undistorted)
-            if(!load_image(current_img_filename, current_img, \
-                            K, distorsion_coefficients))
+            if(!load_image(current_img_filename, current_img))
                 return false;
             
             // Detect keypoints
@@ -179,9 +183,15 @@ namespace SLucAM {
             cv::Mat descriptors;
             detector->detectAndCompute(current_img, cv::Mat(), \
                                             points, descriptors);
+            
+            // Undistort keypoints
+            std::vector<cv::KeyPoint> undistorted_points;
+            undistort_keypoints(points, undistorted_points, \
+                                distorsion_coefficients, K);
 
             // Create new measurement
-            measurements.emplace_back(Measurement(points, descriptors));
+            measurements.emplace_back(Measurement(undistorted_points, 
+                                        descriptors));
 
             // Memorize the name of the image
             measurements.back().setImgName(current_img_filename);
@@ -207,10 +217,10 @@ namespace SLucAM {
 
 
     bool load_TUM_camera_matrix(const std::string& filename, cv::Mat& K, \
-                                cv::Mat& distorsion_parameters) {
+                                cv::Mat& distorsion_coefficients) {
         
         K = cv::Mat::zeros(3,3,CV_32F);
-        distorsion_parameters = cv::Mat::zeros(1,5,CV_32F);
+        distorsion_coefficients = cv::Mat::zeros(1,5,CV_32F);
 
         std::fstream camera_file;
         camera_file.open(filename);
@@ -219,11 +229,11 @@ namespace SLucAM {
             K.at<float>(0,0) >> K.at<float>(0,1) >> K.at<float>(0,2) >> \
             K.at<float>(1,0) >> K.at<float>(1,1) >> K.at<float>(1,2) >> \
             K.at<float>(2,0) >> K.at<float>(2,1) >> K.at<float>(2,2) >> \
-            distorsion_parameters.at<float>(0,0) >> \
-            distorsion_parameters.at<float>(0,1) >> \
-            distorsion_parameters.at<float>(0,2) >> \
-            distorsion_parameters.at<float>(0,3) >> \
-            distorsion_parameters.at<float>(0,4);
+            distorsion_coefficients.at<float>(0,0) >> \
+            distorsion_coefficients.at<float>(0,1) >> \
+            distorsion_coefficients.at<float>(0,2) >> \
+            distorsion_coefficients.at<float>(0,3) >> \
+            distorsion_coefficients.at<float>(0,4);
         camera_file.close();
 
         return true;

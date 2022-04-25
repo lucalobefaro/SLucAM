@@ -25,9 +25,7 @@
 // Loading and saving utilities
 //
 namespace SLucAM {
-    bool load_image(const std::string& filename, cv::Mat& img, \
-                    const cv::Mat& K=cv::Mat(), \
-                    const cv::Mat& distorsion_coefficients=cv::Mat());
+    bool load_image(const std::string& filename, cv::Mat& img);
 } // namespace SLucAM
 
 

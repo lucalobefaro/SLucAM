@@ -26,7 +26,7 @@ namespace SLucAM {
                             const cv::Ptr<cv::Feature2D>& detector, \
                             const bool verbose=false);
     bool load_camera_matrix(const std::string& filename, cv::Mat& K, \
-                            cv::Mat& distorsion_parameters);
+                            cv::Mat& distorsion_coefficients);
 } // namespace SLucAM
 
 
@@ -39,7 +39,7 @@ namespace SLucAM {
                             const cv::Ptr<cv::Feature2D>& detector, \
                             const bool verbose=false);
     bool load_TUM_camera_matrix(const std::string& filename, cv::Mat& K, \
-                                cv::Mat& distorsion_parameters);
+                                cv::Mat& distorsion_coefficients);
     bool save_TUM_results(const std::string& dataset_folder, const State& state);
 } // namespace SLucAM
 
