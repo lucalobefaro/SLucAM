@@ -11,6 +11,9 @@
 #include <Eigen/Cholesky>
 #include <Eigen/Geometry>
 #include <limits>
+#include <Eigen/Eigen>
+#include <Eigen/SVD>
+#include <opencv2/core/core.hpp>
 
 // TODO delete this
 #include <iostream>
@@ -195,6 +198,95 @@ namespace SLucAM {
                 cv::Point3f(0.5*((-D.at<float>(0,0)*s1+O1_x) + (D.at<float>(0,1)*s2+O2_x)), \
                             0.5*((-D.at<float>(1,0)*s1+O1_y) + (D.at<float>(1,1)*s2+O2_y)), \
                             0.5*((-D.at<float>(2,0)*s1+O1_z) + (D.at<float>(2,1)*s2+O2_z))) 
+            );
+
+            // Count it as good
+            ++n_triangulated_points;
+        
+        }
+
+        triangulated_points.shrink_to_fit();
+
+        return n_triangulated_points;
+    }
+
+
+
+    /*
+    * TODO: write a comment
+    */
+    unsigned int linear_triangulation(const std::vector<cv::KeyPoint>& p_img1, \
+                                    const std::vector<cv::KeyPoint>& p_img2, \
+                                    const std::vector<cv::DMatch>& matches, \
+                                    const std::vector<unsigned int>& idxs, \
+                                    const cv::Mat& pose1, const cv::Mat& pose2, \
+                                    const cv::Mat& K, \
+                                    std::vector<cv::Point3f>& triangulated_points) {
+        
+        // Initialization
+        const unsigned int n_points = idxs.size();
+        unsigned int n_triangulated_points = 0;
+        triangulated_points.reserve(n_points);
+
+        // Compute the inverse of the camera matrix
+        // TODO: this computation can be avoided to be done each time
+        const cv::Mat inv_K = K.inv();
+
+        // Compute the projection matrix for camera 1 
+        cv::Mat P1(3,4,CV_32F, cv::Scalar(0));
+        K.copyTo(P1.rowRange(0,3).colRange(0,3));
+
+        // Compute the projection matrix for camera 2 (with references)
+        const cv::Mat R = pose2.rowRange(0,3).colRange(0,3);
+        const cv::Mat t = pose2.rowRange(0,3).col(3);
+        cv::Mat P2(3,4,CV_32F);
+        R.copyTo(P2.rowRange(0,3).colRange(0,3));
+        t.copyTo(P2.rowRange(0,3).col(3));
+        P2 = K*P2;
+        
+        // Triangulate each couple of points
+        for(unsigned int i=0; i<n_points; ++i) {
+
+            // Take references to the current couple of points
+            const float& p1_x = p_img1[matches[idxs[i]].queryIdx].pt.x;
+            const float& p1_y = p_img1[matches[idxs[i]].queryIdx].pt.y;
+            const float& p2_x = p_img2[matches[idxs[i]].trainIdx].pt.x;
+            const float& p2_y = p_img2[matches[idxs[i]].trainIdx].pt.y;
+
+            // Ensemble the A matrix
+            cv::Mat A(4,4,CV_32F);
+            A.row(0) = p1_x*P1.row(2)-P1.row(0);
+            A.row(1) = p1_y*P1.row(2)-P1.row(1);
+            A.row(2) = p2_x*P2.row(2)-P2.row(0);
+            A.row(3) = p2_y*P2.row(2)-P2.row(1);
+
+            // Triangulate with linear method
+            cv::Mat u,w,vt;
+            cv::SVD::compute(A,w,u,vt,cv::SVD::MODIFY_A| cv::SVD::FULL_UV);
+            cv::Mat x3D = vt.row(3).t();
+            x3D = x3D.rowRange(0,3)/x3D.at<float>(3);
+
+            cv::Mat p3dC2 = R*x3D+t;
+
+            // Check if the triangulated point is valid
+            if(!isfinite(x3D.at<float>(0)) || \
+                !isfinite(x3D.at<float>(1)) || \
+                !isfinite(x3D.at<float>(2)) || \
+                x3D.at<float>(2)<=0 || \
+                p3dC2.at<float>(2)<=0) {
+
+                // It is invalid: an invalid point is assumed at position (0,0,0)
+                // TODO: this assumption can be avoided
+                triangulated_points.emplace_back(cv::Point3f(0,0,0));
+
+                // Do not count it as good
+                continue;
+            }
+            
+            // Compute the 3D point as the middlepoint between the two closest points
+            // on the rays (-D1 to re-do the minus computed before)
+            triangulated_points.emplace_back( 
+                cv::Point3f(x3D.at<float>(0),x3D.at<float>(1),x3D.at<float>(2)) 
             );
 
             // Count it as good
@@ -413,11 +505,13 @@ namespace SLucAM {
         }
         parallaxesCos.shrink_to_fit();
 
-        // Get the max parallax cosine and use it to compute the parallax
+        // Get the 50th smallest parallax
         std::sort(parallaxesCos.begin(), parallaxesCos.end());
-        if(parallaxesCos.back() < 1)
-            return std::acos(parallaxesCos.back())*180 / CV_PI;
-        return 0;   // we cannot compute acos
+        const float min_50th_parallax = \
+            parallaxesCos[std::min(50, static_cast<int>(parallaxesCos.size() - 1))];
+        
+        // Compute the parallax between the two poses
+        return std::acos(min_50th_parallax)*180 / CV_PI;
 
     }
     
@@ -595,7 +689,7 @@ namespace SLucAM {
         // Initialization
         unsigned int n_points = idxs.size();
 
-        // Ensemble the A matrix
+        // Ensemble the A matrix for equations
         cv::Mat A = cv::Mat::ones(n_points,9,CV_32F);
         for(unsigned int i = 0; i<n_points; ++i) {
             const float& p1_x = p_img1[matches[idxs[i]].queryIdx].pt.x;
@@ -612,11 +706,14 @@ namespace SLucAM {
             A.at<float>(i,7) = p1_y;
         }
 
-        // Extract the F matrix (cam 1 wrt cam 2)
+        // Compute the linear least square solution
         cv::Mat u,w,vt;
         cv::SVDecomp(A,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
-        cv::Mat Fpre = vt.row(8).reshape(0,3);
-        cv::SVDecomp(Fpre,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
+        cv::Mat unconstrained_F = vt.row(8).reshape(0, 3);
+
+        // Constrain F making the rank 2 by zeroing the last
+        // singular value
+        cv::SVDecomp(unconstrained_F,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
         w.at<float>(2)=0;
         F = u*cv::Mat::diag(w)*vt;
     }
@@ -690,8 +787,10 @@ namespace SLucAM {
     *   p_img1/p_img2: points to use in order to understand wich X computed
     *                   is "better"
     *   matches: all matches between p_img1 and p_img2, with outliers
-    *   idxs: we will consider only those points contained in 
-    *           the matches vector, for wich we have indices in this vector idxs
+    *   matches_filter: we will consider only those points contained in 
+    *           the matches vector, for wich we have indices in this vector
+    *           We also update this vector with only inliers detected from
+    *           the best solution.
     *   F: Foundamental Matrix from which to extract X
     *   K: camera matrix
     *   X: output Transformation Matrix extracted from F [R|t]
@@ -701,125 +800,213 @@ namespace SLucAM {
     void extract_X_from_F(const std::vector<cv::KeyPoint>& p_img1, \
                             const std::vector<cv::KeyPoint>& p_img2, \
                             const std::vector<cv::DMatch>& matches, \
-                            const std::vector<unsigned int>& idxs, \
+                            std::vector<unsigned int>& matches_filter, \
                             const cv::Mat& F, const cv::Mat& K, \
-                            cv::Mat& X, \
-                            std::vector<cv::Point3f>& triangulated_points) {
-        
+                            cv::Mat& X) {
+
         // Initialization
+        cv::Mat R, t;
         cv::Mat W_mat = cv::Mat::zeros(3,3,CV_32F);
         W_mat.at<float>(0,1) = -1;
         W_mat.at<float>(1,0) = 1;
         W_mat.at<float>(2,2) = 1;
-        float best_score = 0;
+        unsigned int best_score = 0;
         float current_score = 0;
-        std::vector<cv::Point3f> current_triangulated_points;
-        cv::Mat X_pred = cv::Mat::eye(4,4,CV_32F);
-        const cv::Mat pose1 = cv::Mat::eye(4,4,CV_32F);
+        std::vector<unsigned int> current_matches_filter, best_matches_filter;
 
         // Extract the essential matrix and decompose it
         cv::Mat E = K.t()*F*K;
         cv::Mat u,w,vt;
-        cv::SVD::compute(E,w,u,vt);
+        cv::SVD::compute(E,w,u,vt,cv::SVD::FULL_UV);
 
         // Extract the R matrix (2 solutions)
         cv::Mat R1 = u*W_mat*vt;
         if(cv::determinant(R1) < 0) {   // right handed condition
-            R1=-R1;
+            R1 = -R1;
         }
         cv::Mat R2 = u*W_mat.t()*vt;
-        if(cv::determinant(R2) < 0) {   // right handed condition
-            R2=-R2;
+        if(cv::determinant(R2) < 0) {    // right handed condition
+            R2 = -R2;
         }
 
-        // Extract the t vector and "normalize" it
-        cv::Mat t;
-        u.col(2).copyTo(t);
-        t=t/cv::norm(t);
-
-        // Scale t vector
-        t /= 10;
+        // Extract the t vector and "normalize" it (2 solutions)
+        cv::Mat t1;
+        u.col(2).copyTo(t1);
+        t1=t1/cv::norm(t1);
+        cv::Mat t2 = -t1;
 
         // Evaluate first solution
-        X_pred.at<float>(0,0) = R1.at<float>(0,0);
-        X_pred.at<float>(0,1) = R1.at<float>(0,1);
-        X_pred.at<float>(0,2) = R1.at<float>(0,2);
-        X_pred.at<float>(1,0) = R1.at<float>(1,0);
-        X_pred.at<float>(1,1) = R1.at<float>(1,1);
-        X_pred.at<float>(1,2) = R1.at<float>(1,2);
-        X_pred.at<float>(2,0) = R1.at<float>(2,0);
-        X_pred.at<float>(2,1) = R1.at<float>(2,1);
-        X_pred.at<float>(2,2) = R1.at<float>(2,2);
-        X_pred.at<float>(0,3) = t.at<float>(0,0);
-        X_pred.at<float>(1,3) = t.at<float>(0,1);
-        X_pred.at<float>(2,3) = t.at<float>(0,2);
-        current_score = triangulate_points(p_img1, p_img2, matches, idxs, \
-                                    pose1, X_pred, K, \
-                                    current_triangulated_points);
-        std::cout << "SCORE: " << current_score << std::endl;
-        std::cout << X_pred << std::endl << std::endl;
+        current_score = compute_transformation_inliers(p_img1, p_img2, matches, matches_filter, \
+                                                       current_matches_filter, R1, t1, K);
+        std::cout << std::endl << "SCORE 1 " << current_score << std::endl;
         if(current_score > best_score) {
             best_score = current_score;
-            X = X_pred.clone();
-            triangulated_points.swap(current_triangulated_points);
+            R = R1.clone();
+            t = t1.clone();
+            best_matches_filter.swap(current_matches_filter);
         } 
 
         // Evaluate second solution
-        X_pred.at<float>(0,3) = -X_pred.at<float>(0,3);
-        X_pred.at<float>(1,3) = -X_pred.at<float>(1,3);
-        X_pred.at<float>(2,3) = -X_pred.at<float>(2,3);
-        current_triangulated_points.clear();
-        current_score = triangulate_points(p_img1, p_img2, matches, idxs, \
-                                    pose1, X_pred, K, \
-                                    current_triangulated_points);
-        std::cout << "SCORE: " << current_score << std::endl;
-        std::cout << X_pred << std::endl << std::endl;
+        current_score = compute_transformation_inliers(p_img1, p_img2, matches, matches_filter, \
+                                                        current_matches_filter, R1, t2, K);
+        std::cout << "SCORE 2 " << current_score << std::endl;
         if(current_score > best_score) {
             best_score = current_score;
-            X = X_pred.clone();
-            triangulated_points.swap(current_triangulated_points);
+            R = R1.clone();
+            t = t2.clone();
+            best_matches_filter.swap(current_matches_filter);
         } 
 
         // Evaluate third solution
-        X_pred.at<float>(0,0) = R2.at<float>(0,0);
-        X_pred.at<float>(0,1) = R2.at<float>(0,1);
-        X_pred.at<float>(0,2) = R2.at<float>(0,2);
-        X_pred.at<float>(1,0) = R2.at<float>(1,0);
-        X_pred.at<float>(1,1) = R2.at<float>(1,1);
-        X_pred.at<float>(1,2) = R2.at<float>(1,2);
-        X_pred.at<float>(2,0) = R2.at<float>(2,0);
-        X_pred.at<float>(2,1) = R2.at<float>(2,1);
-        X_pred.at<float>(2,2) = R2.at<float>(2,2);
-        X_pred.at<float>(0,3) = t.at<float>(0,0);
-        X_pred.at<float>(1,3) = t.at<float>(0,1);
-        X_pred.at<float>(2,3) = t.at<float>(0,2);
-        current_triangulated_points.clear();
-        current_score = triangulate_points(p_img1, p_img2, matches, idxs, \
-                                    pose1, X_pred, K, \
-                                    current_triangulated_points);
-        std::cout << "SCORE: " << current_score << std::endl;
-        std::cout << X_pred << std::endl << std::endl;
+        current_score = compute_transformation_inliers(p_img1, p_img2, matches, matches_filter, \
+                                                        current_matches_filter, R2, t1, K);
+        std::cout << "SCORE 3 " << current_score << std::endl;
         if(current_score > best_score) {
             best_score = current_score;
-            X = X_pred.clone();
-            triangulated_points.swap(current_triangulated_points);
+            R = R2.clone();
+            t = t1.clone();
+            best_matches_filter.swap(current_matches_filter);
         }
 
         // Evaluate fourth solution
-        X_pred.at<float>(0,3) = -X_pred.at<float>(0,3);
-        X_pred.at<float>(1,3) = -X_pred.at<float>(1,3);
-        X_pred.at<float>(2,3) = -X_pred.at<float>(2,3);
-        current_triangulated_points.clear();
-        current_score = triangulate_points(p_img1, p_img2, matches, idxs, \
-                                    pose1, X_pred, K, \
-                                    current_triangulated_points);
-        std::cout << "SCORE: " << current_score << std::endl;
-        std::cout << X_pred << std::endl << std::endl;
+        current_score = compute_transformation_inliers(p_img1, p_img2, matches, matches_filter, \
+                                                        current_matches_filter, R2, t2, K);
+        std::cout << "SCORE 4 " << current_score << std::endl << std::endl;
         if(current_score > best_score) {
             best_score = current_score;
-            X = X_pred.clone();
-            triangulated_points.swap(current_triangulated_points);
-        } 
+            R = R2.clone();
+            t = t2.clone();
+            best_matches_filter.swap(current_matches_filter);
+        }
+
+        // TODO: check if the solutions are satisfying
+
+        // Save best solution
+        X = cv::Mat::eye(4,4,CV_32F);
+        R.copyTo(X.rowRange(0,3).colRange(0,3));
+        t.copyTo(X.rowRange(0,3).col(3));
+        matches_filter.swap(best_matches_filter);
+
+    }
+
+
+
+    /*
+    * This function evaluates a solution (R and t) extractedfrom the Foundamental
+    * matrix by computing the number of inliers that such pose has.
+    * Inputs:
+    *   p_img1/p_im2: measured points in the two cameras
+    *   matches: matches between p_img1 and p_img2 with outliers
+    *   matches_filter: list of valid matches ids
+    *   matches_inliers: list of matches ids that are considered inliers
+    *   R/t: pose to evaluate
+    *   K: camera matrix of the two cameras
+    * Outputs:
+    *   #inliers (size of the matches_inliers vector)
+    */
+    unsigned int compute_transformation_inliers(const std::vector<cv::KeyPoint>& p_img1, \
+                                                const std::vector<cv::KeyPoint>& p_img2, \
+                                                const std::vector<cv::DMatch>& matches, \
+                                                const std::vector<unsigned int>& matches_filter, \
+                                                std::vector<unsigned int>& matches_inliers, \
+                                                const cv::Mat& R, const cv::Mat& t, \
+                                                const cv::Mat& K) {
+        
+        // Initialization
+        matches_inliers.clear();
+        const unsigned int n_points = matches_filter.size();
+        const float reprojection_threshold = 4.0;
+        cv::Mat u,w,vt;
+        cv::Mat A = cv::Mat::zeros(4,4,CV_32F);
+        cv::Mat current_3D_point, current_3D_point_wrt2, d1, d2;
+        bool is_current_match_valid;
+        float current_cos_parallax, imx, imy, invz;
+        const float& fx = K.at<float>(0,0);
+        const float& fy = K.at<float>(1,1);
+        const float& cx = K.at<float>(0,2);
+        const float& cy = K.at<float>(1,2);
+
+        // Compute the projection matrices of the two cameras
+        cv::Mat P1 = cv::Mat::zeros(3,4,CV_32F);
+        cv::Mat P2 = cv::Mat::zeros(3,4,CV_32F);
+        K.copyTo(P1.rowRange(0,3).colRange(0,3));   // first pose is at the origin
+        R.copyTo(P2.rowRange(0,3).colRange(0,3));
+        t.copyTo(P2.rowRange(0,3).col(3));
+        P2 = K*P2;
+
+        // Compute the origins of the two cameras
+        cv::Mat O1 = cv::Mat::zeros(3,1,CV_32F);
+        cv::Mat O2 = -R.t()*t;
+
+        // For each valid match
+        matches_inliers.reserve(n_points);
+        for(unsigned int i=0; i<n_points; ++i) {
+
+            // Take references to the current matched points
+            const float& p1_x = p_img1[matches[matches_filter[i]].queryIdx].pt.x;
+            const float& p1_y = p_img1[matches[matches_filter[i]].queryIdx].pt.y;
+            const float& p2_x = p_img2[matches[matches_filter[i]].trainIdx].pt.x;
+            const float& p2_y = p_img2[matches[matches_filter[i]].trainIdx].pt.y;
+
+            // Triangulate them with the linear triangulation method
+            A.row(0) = p1_x*P1.row(2)-P1.row(0);
+            A.row(1) = p1_y*P1.row(2)-P1.row(1);
+            A.row(2) = p2_x*P2.row(2)-P2.row(0);
+            A.row(3) = p2_y*P2.row(2)-P2.row(1);
+            cv::SVD::compute(A,w,u,vt,cv::SVD::MODIFY_A| cv::SVD::FULL_UV);
+            current_3D_point = vt.row(3).t();
+            current_3D_point = current_3D_point.rowRange(0,3)/current_3D_point.at<float>(3);
+            const float& current_3D_point_x = current_3D_point.at<float>(0);
+            const float& current_3D_point_y = current_3D_point.at<float>(1);
+            const float& current_3D_point_z = current_3D_point.at<float>(2);
+
+            // Check that the point is not at infinity
+            if(!isfinite(current_3D_point_x) || \
+                !isfinite(current_3D_point_y) || \
+                !isfinite(current_3D_point_z)) {
+                continue;
+            }
+
+            // Compute the parallax
+            d1 = current_3D_point - O1;
+            d2 = current_3D_point - O2;
+            current_cos_parallax = d1.dot(d2)/(cv::norm(d1)*cv::norm(d2));
+
+            // Check if the point is in front of the first camera
+            if(current_3D_point_z<=0 && current_cos_parallax<0.99998)
+                continue;
+            
+            // Check if the point is in front of the second camera
+            current_3D_point_wrt2 = R*current_3D_point+t;
+            const float& current_3D_point_wrt2_x = current_3D_point_wrt2.at<float>(0);
+            const float& current_3D_point_wrt2_y = current_3D_point_wrt2.at<float>(1);
+            const float& current_3D_point_wrt2_z = current_3D_point_wrt2.at<float>(2);
+            if(current_3D_point_wrt2_z<=0 && current_cos_parallax<0.99998)
+                continue;
+            
+            // Check reprojection error in first image
+            invz = 1.0/current_3D_point.at<float>(2);
+            imx = fx*current_3D_point_x*invz+cx;
+            imy = fy*current_3D_point_y*invz+cy;
+            if(((imx-p1_x)*(imx-p1_x)+(imy-p1_y)*(imy-p1_y)) > \
+                    reprojection_threshold)
+                continue;
+
+            // Check reprojection error in second image
+            invz = 1.0/current_3D_point_wrt2.at<float>(2);
+            imx = fx*current_3D_point_wrt2_x*invz+cx;
+            imy = fy*current_3D_point_wrt2_y*invz+cy;
+            if(((imx-p2_x)*(imx-p2_x)+(imy-p2_y)*(imy-p2_y)) > \
+                    reprojection_threshold)
+                continue;
+            
+            // All checks passed, it is an inlier
+            matches_inliers.emplace_back(matches_filter[i]);
+
+        }
+
+        return matches_inliers.size();
+
     }
     
 } // namespace SLucAM
@@ -991,9 +1178,6 @@ namespace SLucAM {
         const cv::Mat DampingMatrix = \
                     cv::Mat::eye(6, 6, CV_32F)*damping_factor;
 
-        // Consider the pose of the world w.r.t. camera
-        guessed_pose = invert_transformation_matrix(guessed_pose);
-
         // For each iteration
         for(unsigned int iter=0; iter<n_iterations; ++iter) {
             
@@ -1065,9 +1249,6 @@ namespace SLucAM {
             // Apply the perturbation
             apply_perturbation_Tmatrix(dx, guessed_pose, 0);
         }
-
-        // Go back in the representation of pose w.r.t. world
-        guessed_pose = invert_transformation_matrix(guessed_pose);
 
         return n_inliers.back();
 

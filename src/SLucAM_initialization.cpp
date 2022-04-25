@@ -130,9 +130,12 @@ namespace SLucAM {
         // Compute pose of camera 2 (world wrt cam2) from F
         // and triangulate inliers
         extract_X_from_F(p_img1, p_img2, matches, matches_filter, \
-                            F, K, predicted_pose, triangulated_points);
-        
-        // Compute the parallax between the two poses   
+                            F, K, predicted_pose);
+        triangulate_points(p_img1, p_img2, matches, matches_filter, \
+                                    cv::Mat::eye(4,4,CV_32F), predicted_pose, K, \
+                                    triangulated_points);
+                
+        // Compute the parallax between the two poses  
         std::vector<unsigned int> common_landmarks(triangulated_points.size());
         std::iota(common_landmarks.begin(), common_landmarks.end(), 0);
         float parallax = computeParallax(cv::Mat::eye(4,4,CV_32F), predicted_pose, \

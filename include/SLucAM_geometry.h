@@ -31,6 +31,13 @@ namespace SLucAM {
                                     const cv::Mat& pose1, const cv::Mat& pose2, \
                                     const cv::Mat& K, \
                                     std::vector<cv::Point3f>& triangulated_points);
+    unsigned int linear_triangulation(const std::vector<cv::KeyPoint>& p_img1, \
+                                    const std::vector<cv::KeyPoint>& p_img2, \
+                                    const std::vector<cv::DMatch>& matches, \
+                                    const std::vector<unsigned int>& idxs, \
+                                    const cv::Mat& pose1, const cv::Mat& pose2, \
+                                    const cv::Mat& K, \
+                                    std::vector<cv::Point3f>& triangulated_points);
     void apply_perturbation_Tmatrix(const cv::Mat& perturbation, \
                                     cv::Mat& T_matrix, const unsigned int& starting_idx);
     cv::Mat invert_transformation_matrix(const cv::Mat& T_matrix);
@@ -75,10 +82,16 @@ namespace SLucAM {
     void extract_X_from_F(const std::vector<cv::KeyPoint>& p_img1, \
                             const std::vector<cv::KeyPoint>& p_img2, \
                             const std::vector<cv::DMatch>& matches, \
-                            const std::vector<unsigned int>& idxs, \
+                            std::vector<unsigned int>& matches_filter, \
                             const cv::Mat& F, const cv::Mat& K, \
-                            cv::Mat& X, \
-                            std::vector<cv::Point3f>& triangulated_points);
+                            cv::Mat& X);
+    unsigned int compute_transformation_inliers(const std::vector<cv::KeyPoint>& p_img1, \
+                                                const std::vector<cv::KeyPoint>& p_img2, \
+                                                const std::vector<cv::DMatch>& matches, \
+                                                const std::vector<unsigned int>& matches_filter, \
+                                                std::vector<unsigned int>& matches_inliers, \
+                                                const cv::Mat& R, const cv::Mat& t, \
+                                                const cv::Mat& K);
 } // namespace SLucAM
 
 

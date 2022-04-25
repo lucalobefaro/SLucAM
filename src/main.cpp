@@ -19,7 +19,7 @@ using namespace std;
 
 int main() {
 
-    bool synthetic = true;
+    bool synthetic = false;
 
     // -----------------------------------------------------------------------------
     // Create Environment and set variables
@@ -28,18 +28,18 @@ int main() {
     if(synthetic) 
         dataset_folder = "../data/datasets/my_synthetic_dataset/";
     else
-        dataset_folder = "../data/datasets/tum_dataset_teddy/";
+        dataset_folder = "../data/datasets/tum_dataset_2/";
     const std::string results_folder = "../results/";
 
     const unsigned int n_orb_features = 1000;
     const unsigned int n_ransac_iters = 200;
 
-    const unsigned int how_many_meas_optimization = 24;
+    const unsigned int how_many_meas_optimization = 10;
     const unsigned int n_iters_POSIT = 50;
     const unsigned int kernel_threshold_POSIT = 100000;
     const float inliers_threshold_POSIT = 500000;
 
-    const unsigned int n_iters_BA = 10;
+    const unsigned int n_iters_BA = 50;
     const float kernel_threshold_proj_BA = 100;
     const float inliers_threshold_proj_BA = 500;
     const float kernel_threshold_pose_BA = 10;
@@ -77,8 +77,8 @@ int main() {
     // -----------------------------------------------------------------------------
     // Create Matcher
     // -----------------------------------------------------------------------------
-    //SLucAM::Matcher matcher;
-    SLucAM::Matcher matcher(associations);
+    SLucAM::Matcher matcher;
+    //SLucAM::Matcher matcher(associations);
 
 
     // -----------------------------------------------------------------------------
@@ -126,7 +126,7 @@ int main() {
     cout << "--- DONE! ---" << endl << endl;
     */
 
-    // -----------------------------------------------------------------------------
+    /* -----------------------------------------------------------------------------
     // INTEGRATE NEW MEASUREMENT AND EXPAND MAP
     // -----------------------------------------------------------------------------
     cout << "--- ESPLORATION STARTED ---" << endl;
@@ -148,7 +148,7 @@ int main() {
     }
     //state.performTotalBA(n_iters_BA, verbose);
     cout << "--- DONE! ---" << endl << endl;
-    
+    */
 
     /* -----------------------------------------------------------------------------
     // SAVE RESULTS
@@ -156,7 +156,7 @@ int main() {
     SLucAM::save_poses(dataset_folder, state.getPoses());
     SLucAM::save_landmarks(dataset_folder, state.getLandmarks());
     */
-    if(!synthetic) SLucAM::save_TUM_results("../data/datasets/tum_dataset_teddy/", state);
+    if(!synthetic) SLucAM::save_TUM_results(dataset_folder, state);
 
 
     /* -----------------------------------------------------------------------------

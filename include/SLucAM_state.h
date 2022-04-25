@@ -143,9 +143,14 @@ namespace SLucAM {
     
     public:
 
-        State() {this->_next_measurement_idx=0;};
+        State();
 
         State(cv::Mat& K, std::vector<Measurement>& measurements, \
+            const unsigned int expected_poses, \
+            const unsigned int expected_landmarks);
+        
+        State(cv::Mat& K, cv::Mat& distorsion_coefficients, \
+            std::vector<Measurement>& measurements, \
             const unsigned int expected_poses, \
             const unsigned int expected_landmarks);
         
@@ -177,6 +182,9 @@ namespace SLucAM {
 
         const cv::Mat& getCameraMatrix() const \
             {return this->_K;};
+        
+        const cv::Mat& getDistorsionCoefficients() const \
+            {return this->_distorsion_coefficients;};
 
         const Measurement& getNextMeasurement() \
             {return this->_measurements[this->_next_measurement_idx++];};
@@ -195,7 +203,7 @@ namespace SLucAM {
     
     private: 
 
-        static bool predictPose(cv::Mat& guessed_pose, \
+        static bool predictPoseG2o(cv::Mat& guessed_pose, \
                                 const Measurement& meas_to_predict, \
                                 std::vector<std::pair<unsigned int, unsigned int>>& \
                                         points_associations, \
@@ -207,6 +215,19 @@ namespace SLucAM {
                                 const cv::Mat& K, \
                                 const unsigned int& local_map_size, \
                                 const bool& verbose=false);
+        
+        static bool predictPoseMyPosit(cv::Mat& guessed_pose, \
+                                        const Measurement& meas_to_predict, \
+                                        std::vector<std::pair<unsigned int, unsigned int>>& \
+                                                points_associations, \
+                                        Matcher& matcher, \
+                                        const std::vector<Keyframe>& keyframes, \
+                                        const std::vector<cv::Point3f>& landmarks, \
+                                        const std::vector<Measurement>& measurements, \
+                                        const std::vector<cv::Mat>& poses, \
+                                        const cv::Mat& K, \
+                                        const unsigned int& local_map_size, \
+                                        const bool& verbose=false);
 
         static void triangulateNewPoints(std::vector<Keyframe>& keyframes, \
                                         std::vector<cv::Point3f>& landmarks, \
@@ -235,8 +256,9 @@ namespace SLucAM {
                                                 unsigned int>>& points_associations, \
                                             const unsigned int& landmark_idx);
     
-        // Camera matrix
+        // Camera matrix and distorsion coefficients
         cv::Mat _K;
+        cv::Mat _distorsion_coefficients;
 
         // The vector containing all the measurements, ordered by time
         std::vector<Measurement> _measurements;

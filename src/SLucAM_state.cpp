@@ -26,20 +26,44 @@
 namespace SLucAM {
 
     /*
+    * Base constructor.
+    */
+    State::State() {
+        this->_next_measurement_idx=0;
+        this->_distorsion_coefficients = cv::Mat();
+    }
+
+
+    /*
     * This constructor allows us to reserve some expected space for the vector
     * of poses and the vector of landmarks, just for optimization. It also need
-    * the camera matrix K. It also create the matcher (default).
+    * the camera matrix K.
     */
     State::State(cv::Mat& K, std::vector<Measurement>& measurements, \
                 const unsigned int expected_poses, \
-                const unsigned int expected_landmarks) {
+                const unsigned int expected_landmarks) 
+        : State() {
         
         this->_K = K;
         this->_measurements = measurements;
         this->_poses.reserve(expected_poses);
         this->_landmarks.reserve(expected_landmarks);
         this->_keyframes.reserve(expected_poses);
-        this->_next_measurement_idx = 0;
+
+    }
+
+
+    /*
+    * This constructor is like the previous one but with the distorsion
+    * coefficients.
+    */
+    State::State(cv::Mat& K, cv::Mat& distorsion_coefficients, \
+                std::vector<Measurement>& measurements, \
+                const unsigned int expected_poses, \
+                const unsigned int expected_landmarks)  
+        : State(K, measurements, expected_poses, expected_landmarks) {
+
+        this->_distorsion_coefficients = distorsion_coefficients;
 
     }
 
@@ -154,11 +178,11 @@ namespace SLucAM {
         std::vector<std::pair<unsigned int, unsigned int>> points_associations;
         const cv::Mat& pose_1 = this->_poses[this->_keyframes.back().getPoseIdx()];
         cv::Mat predicted_pose = pose_1.clone();
-        if(!predictPose(predicted_pose, meas_to_integrate, points_associations, \
-                            matcher, this->_keyframes, \
-                            this->_landmarks, this->_measurements, \
-                            this->_poses, this->_K, \
-                            local_map_size, verbose)) {
+        if(!predictPoseMyPosit(predicted_pose, meas_to_integrate, points_associations, \
+                                matcher, this->_keyframes, \
+                                this->_landmarks, this->_measurements, \
+                                this->_poses, this->_K, \
+                                local_map_size, verbose)) {
             return false;
         }
         const unsigned int n_inliers_posit = points_associations.size();
@@ -362,7 +386,7 @@ namespace SLucAM {
     /*
     * This function, given a measurement, predict its pose, by using an 
     * initial guess and all the seen landmarks, already triangulated, from 
-    * such measurement. It uses projective ICP.
+    * such measurement. It uses g2o library for optimization.
     * Inputs:
     *   guessedPose: initial guess for projective ICP (output)
     *   measurement: measurement for which predict the pose
@@ -375,18 +399,18 @@ namespace SLucAM {
     * Output:
     *   true if the pose has been predicted, false otherwise
     */
-    bool State::predictPose(cv::Mat& guessed_pose, \
-                            const Measurement& meas_to_predict, \
-                            std::vector<std::pair<unsigned int, unsigned int>>& \
-                                        points_associations_inliers, \
-                            Matcher& matcher, \
-                            const std::vector<Keyframe>& keyframes, \
-                            const std::vector<cv::Point3f>& landmarks, \
-                            const std::vector<Measurement>& measurements, \
-                            const std::vector<cv::Mat>& poses, \
-                            const cv::Mat& K, \
-                            const unsigned int& local_map_size, \
-                            const bool& verbose) {
+    bool State::predictPoseG2o(cv::Mat& guessed_pose, \
+                                const Measurement& meas_to_predict, \
+                                std::vector<std::pair<unsigned int, unsigned int>>& \
+                                            points_associations_inliers, \
+                                Matcher& matcher, \
+                                const std::vector<Keyframe>& keyframes, \
+                                const std::vector<cv::Point3f>& landmarks, \
+                                const std::vector<Measurement>& measurements, \
+                                const std::vector<cv::Mat>& poses, \
+                                const cv::Mat& K, \
+                                const unsigned int& local_map_size, \
+                                const bool& verbose) {
         
         // Initialization
         const unsigned int n_keyframes = keyframes.size();
@@ -526,6 +550,135 @@ namespace SLucAM {
                             static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(0))\
                                 ->estimate() \
                         );
+        
+        return true;
+
+    }
+
+
+
+    /*
+    * This function, given a measurement, predict its pose, by using an 
+    * initial guess and all the seen landmarks, already triangulated, from 
+    * such measurement. It uses my projective ICP implementation.
+    * Inputs:
+    *   guessedPose: initial guess for projective ICP (output)
+    *   measurement: measurement for which predict the pose
+    *   points_associations_inliers: a vector containing all the associations 2D points
+    *       <-> 3D points for the measurement analyzed (it contains only "inliers")
+    *   all the useful state infos and the matcher
+    *   local_map_size: the number of keyframes to analyze in order to
+    *       understand which landmarks are seen from the current measurement
+    *       (starting from the last keyframe)
+    * Output:
+    *   true if the pose has been predicted, false otherwise
+    */
+    bool State::predictPoseMyPosit(cv::Mat& guessed_pose, \
+                                const Measurement& meas_to_predict, \
+                                std::vector<std::pair<unsigned int, unsigned int>>& \
+                                            points_associations_inliers, \
+                                Matcher& matcher, \
+                                const std::vector<Keyframe>& keyframes, \
+                                const std::vector<cv::Point3f>& landmarks, \
+                                const std::vector<Measurement>& measurements, \
+                                const std::vector<cv::Mat>& poses, \
+                                const cv::Mat& K, \
+                                const unsigned int& local_map_size, \
+                                const bool& verbose) {
+        
+        // Initialization
+        const unsigned int n_keyframes = keyframes.size();
+        std::vector<std::pair<unsigned int, unsigned int>> points_associations;
+
+        // Adjust the local map size according to the number of keyframes
+        unsigned int window = local_map_size;
+        if(local_map_size > n_keyframes) {
+            window = n_keyframes;
+        }
+
+        // For each measurement in the window
+        for(unsigned int window_idx=1; window_idx<window+1; ++window_idx) {
+
+            // Take the current keyframe's measurement
+            const Keyframe& current_keyframe = keyframes[n_keyframes-window_idx];
+            const Measurement& current_meas = measurements[current_keyframe.getMeasIdx()];
+            
+            // Match the current measurement with the measure to predict
+            std::vector<cv::DMatch> matches;
+            matcher.match_measurements(current_meas, meas_to_predict, matches);
+            const unsigned int n_matches = matches.size();
+
+            // For each match search for that for which we have already a 3D point
+            // predicted     
+            int current_3d_point_idx;
+            points_associations.reserve(points_associations.size()+n_matches);
+            for(unsigned int i=0; i<n_matches; ++i) {
+
+                // Get the idx of the landmark for this association (if not we have -1)
+                current_3d_point_idx = \
+                    current_keyframe.point2Landmark(matches[i].queryIdx);
+                
+                // If we have a predicted point for this association and we have not
+                // already used it
+                if( (current_3d_point_idx != -1) && \
+                    (!containsLandmark(points_associations, current_3d_point_idx))) {
+                    
+                    // Add it as point association
+                    points_associations.emplace_back(matches[i].trainIdx, \
+                                                current_3d_point_idx);
+                }
+
+            }
+        }
+        points_associations.shrink_to_fit();
+        const unsigned int n_points_associations = points_associations.size();
+
+        if(verbose) {
+            std::cout << n_points_associations << " points already seen, ";
+        }
+
+        // If we do not have enough points associations, return error
+        if(n_points_associations < 3) {
+            if(verbose) {
+                std::cout << "too few associations..." << std::endl;
+            }
+            return false;
+        }
+
+        // Predict the pose using projective ICP
+        std::vector<bool> points_associations_filter(n_points_associations, false);
+        const unsigned int n_inliers = perform_Posit(guessed_pose, \
+                                                        meas_to_predict, \
+                                                        points_associations_filter, \
+                                                        points_associations, \
+                                                        landmarks, \
+                                                        K, \
+                                                        50, \
+                                                        100, \
+                                                        500, \
+                                                        1);
+
+        if(verbose) {
+            std::cout << n_inliers << " inliers, ";
+        }
+
+        // Check if we have at least 3 inliers (the minimal set of points
+        // to have a "good" constrained problem)
+        if(n_inliers < 3) {
+            if(verbose) {
+                std::cout << "too few inliers..." << std::endl;
+            }
+            return false;
+        }
+
+        // Mantain only the inliers
+        points_associations_inliers.reserve(n_inliers);
+        for(unsigned int i=0; i<n_inliers; ++i) {
+            if(points_associations_filter[i]) {
+                points_associations_inliers.emplace_back(points_associations[i]);
+            }
+        }
+        points_associations_inliers.shrink_to_fit();
         
         return true;
 

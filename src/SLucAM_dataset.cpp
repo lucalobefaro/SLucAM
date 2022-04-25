@@ -36,12 +36,12 @@ namespace SLucAM {
         std::string current_filename, current_line;
         std::string camera_matrix_filename = dataset_folder + "camera.dat";
         std::string csv_filename = dataset_folder + "data.csv";
-        cv::Mat current_img, K;
+        cv::Mat current_img, K, distorsion_coefficients;
         bool K_loaded = false;
         std::vector<Measurement> measurements;
 
         // Load the camera matrix
-        if(!load_camera_matrix(camera_matrix_filename, K))
+        if(!load_camera_matrix(camera_matrix_filename, K, distorsion_coefficients))
             return false;
 
         // Open the csv file
@@ -60,7 +60,8 @@ namespace SLucAM {
             current_filename = dataset_folder+current_filename;
 
             // Load the measurement
-            if(!load_image(current_filename, current_img))
+            if(!load_image(current_filename, current_img, \
+                            K, distorsion_coefficients))
                 return false;
             
             // Detect keypoints
@@ -79,11 +80,14 @@ namespace SLucAM {
         measurements.shrink_to_fit();
 
         // Initialize the state
-        state = State(K, measurements, measurements.size(), 5000);
+        state = State(K, distorsion_coefficients, measurements, \
+                        measurements.size(), 5000);
 
         if(verbose) {
             std::cout << "Loaded " << measurements.size() << " measurements" \
-                << " with camera matrix:" << std::endl << K << std::endl;
+                << " with camera matrix:" << std::endl << K << std::endl \
+                << "and distorsion parameters: " << std::endl \
+                << distorsion_coefficients << std::endl;
         }
         
         return true;
@@ -95,9 +99,11 @@ namespace SLucAM {
     * Load the camera matrix from the "camera.dat" file in my dataset.
     * It returns false in case of errors.
     */
-    bool load_camera_matrix(const std::string& filename, cv::Mat& K) {
+    bool load_camera_matrix(const std::string& filename, cv::Mat& K, \
+                            cv::Mat& distorsion_parameters) {
 
         K = cv::Mat::zeros(3,3,CV_32F);
+        distorsion_parameters = cv::Mat::zeros(1,5,CV_32F);
 
         std::fstream camera_file;
         camera_file.open(filename);
@@ -105,7 +111,12 @@ namespace SLucAM {
         camera_file >> \
             K.at<float>(0,0) >> K.at<float>(0,1) >> K.at<float>(0,2) >> \
             K.at<float>(1,0) >> K.at<float>(1,1) >> K.at<float>(1,2) >> \
-            K.at<float>(2,0) >> K.at<float>(2,1) >> K.at<float>(2,2);
+            K.at<float>(2,0) >> K.at<float>(2,1) >> K.at<float>(2,2) >> \
+            distorsion_parameters.at<float>(0,0) >> \
+            distorsion_parameters.at<float>(0,1) >> \
+            distorsion_parameters.at<float>(0,2) >> \
+            distorsion_parameters.at<float>(0,3) >> \
+            distorsion_parameters.at<float>(0,4);
         camera_file.close();
 
         return true;
@@ -128,11 +139,11 @@ namespace SLucAM {
         std::string camera_matrix_filename = dataset_folder + "camera_parameters.txt";
         std::string imgs_names_filename = dataset_folder + "rgb.txt";
         std::string current_line, current_img_filename;
-        cv::Mat K, current_img;
+        cv::Mat K, distorsion_coefficients, current_img;
         std::vector<Measurement> measurements;
 
         // Load the camera matrix
-        if(!load_camera_matrix(camera_matrix_filename, K))
+        if(!load_TUM_camera_matrix(camera_matrix_filename, K, distorsion_coefficients))
             return false;
 
         // Open the file containing the ordered names of the images
@@ -158,8 +169,9 @@ namespace SLucAM {
             ss_current_line_csv_file >> current_img_filename;
             current_img_filename = dataset_folder+current_img_filename;
 
-            // Load the measurement
-            if(!load_image(current_img_filename, current_img))
+            // Load the measurement (undistorted)
+            if(!load_image(current_img_filename, current_img, \
+                            K, distorsion_coefficients))
                 return false;
             
             // Detect keypoints
@@ -177,14 +189,16 @@ namespace SLucAM {
             ++i;
 
         }
-        measurements.shrink_to_fit();
 
         // Initialize the state
-        state = State(K, measurements, measurements.size(), 50000);
+        state = State(K, distorsion_coefficients, measurements, \
+                        measurements.size(), 50000);
 
         if(verbose) {
             std::cout << "Loaded " << measurements.size() << " measurements" \
-                << " with camera matrix:" << std::endl << K << std::endl;
+                << " with camera matrix:" << std::endl << K << std::endl \
+                << "and distorsion parameters: " << std::endl \
+                << distorsion_coefficients << std::endl;
         }
 
         return true;
@@ -192,9 +206,11 @@ namespace SLucAM {
     }
 
 
-    bool load_TUM_camera_matrix(const std::string& filename, cv::Mat& K) {
+    bool load_TUM_camera_matrix(const std::string& filename, cv::Mat& K, \
+                                cv::Mat& distorsion_parameters) {
         
         K = cv::Mat::zeros(3,3,CV_32F);
+        distorsion_parameters = cv::Mat::zeros(1,5,CV_32F);
 
         std::fstream camera_file;
         camera_file.open(filename);
@@ -202,7 +218,12 @@ namespace SLucAM {
         camera_file >> \
             K.at<float>(0,0) >> K.at<float>(0,1) >> K.at<float>(0,2) >> \
             K.at<float>(1,0) >> K.at<float>(1,1) >> K.at<float>(1,2) >> \
-            K.at<float>(2,0) >> K.at<float>(2,1) >> K.at<float>(2,2);
+            K.at<float>(2,0) >> K.at<float>(2,1) >> K.at<float>(2,2) >> \
+            distorsion_parameters.at<float>(0,0) >> \
+            distorsion_parameters.at<float>(0,1) >> \
+            distorsion_parameters.at<float>(0,2) >> \
+            distorsion_parameters.at<float>(0,3) >> \
+            distorsion_parameters.at<float>(0,4);
         camera_file.close();
 
         return true;
@@ -214,56 +235,19 @@ namespace SLucAM {
     bool save_TUM_results(const std::string& dataset_folder, const State& state) {
 
         // Initialization
-        std::string ground_truth_filename = dataset_folder + "groundtruth.txt";
-        std::string results_filename = dataset_folder + "pose_results.txt";
+        std::string results_filename = dataset_folder + "SLucAM_results.txt";
         std::string current_line;
-        cv::Mat base_pose = cv::Mat::eye(4,4,CV_32F);
-        cv::Mat base_pose_quat = cv::Mat::zeros(4,1,CV_32F);
-        cv::Mat base_pose_R;
-        float ignore_float;
-
-        // Load the first ground truth pose as a quaternion
-        std::fstream ground_truth_file;
-        ground_truth_file.open(ground_truth_filename);
-        if(ground_truth_file.fail()) return false;
-        std::getline(ground_truth_file, current_line);
-        std::getline(ground_truth_file, current_line);
-        std::getline(ground_truth_file, current_line);
-        std::getline(ground_truth_file, current_line);
-        std::stringstream ss_current_line_ground_truth_file(current_line);
-        ss_current_line_ground_truth_file >> ignore_float;
-        ss_current_line_ground_truth_file >> base_pose.at<float>(0,3);
-        ss_current_line_ground_truth_file >> base_pose.at<float>(1,3);
-        ss_current_line_ground_truth_file >> base_pose.at<float>(2,3);
-        ss_current_line_ground_truth_file >> base_pose_quat.at<float>(0,0);
-        ss_current_line_ground_truth_file >> base_pose_quat.at<float>(1,0);
-        ss_current_line_ground_truth_file >> base_pose_quat.at<float>(2,0);
-        ss_current_line_ground_truth_file >> base_pose_quat.at<float>(3,0);
-        ground_truth_file.close();
-
-        // Extract the rotational part from the quaternion
-        quaternion_to_matrix(base_pose_quat, base_pose_R);
-        base_pose.at<float>(0,0) = base_pose_R.at<float>(0,0);
-        base_pose.at<float>(0,1) = base_pose_R.at<float>(0,1);
-        base_pose.at<float>(0,2) = base_pose_R.at<float>(0,2);
-        base_pose.at<float>(1,0) = base_pose_R.at<float>(1,0);
-        base_pose.at<float>(1,1) = base_pose_R.at<float>(1,1);
-        base_pose.at<float>(1,2) = base_pose_R.at<float>(1,2);
-        base_pose.at<float>(2,0) = base_pose_R.at<float>(2,0);
-        base_pose.at<float>(2,1) = base_pose_R.at<float>(2,1);
-        base_pose.at<float>(2,2) = base_pose_R.at<float>(2,2);
 
         // Open the file where to save the results
         std::ofstream results_file;
         results_file.open(results_filename);
         if(results_file.fail()) return false;
 
-        // Save each pose in the state, bringing it in the
-        // reference frame of the first gt pose and converting
-        // the rotational part to quaternion format
+        // Save each pose in the state (pose wrt world), in the TUM format
+        // TODO: save also timestamps
         const unsigned int n_poses = state.getPoses().size();
         for(unsigned int i=0; i<n_poses; ++i) {
-            const cv::Mat current_pose = base_pose*invert_transformation_matrix(state.getPoses()[i]);
+            const cv::Mat current_pose = invert_transformation_matrix(state.getPoses()[i]);
             cv::Mat current_quat;
             matrix_to_quaternion(current_pose.rowRange(0,3).colRange(0,3), \
                     current_quat);
