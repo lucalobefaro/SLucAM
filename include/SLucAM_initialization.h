@@ -50,7 +50,8 @@ namespace SLucAM {
                             const cv::Mat& T1, const cv::Mat& T2, \
                             const std::vector<std::vector<unsigned int>>& rand_idxs, \
                             unsigned int& n_inliers, \
-                            std::vector<bool>& inliers_mask, \
+                            cv::Mat& best_F, \
+                            std::vector<unsigned int>& matches_filter, \
                             const unsigned int n_iter=200, \
                             const float inliers_threshold=3.84);
     
@@ -62,7 +63,6 @@ namespace SLucAM {
                             const cv::Mat& T1, const cv::Mat& T2, \
                             const std::vector<std::vector<unsigned int>>& rand_idxs, \
                             unsigned int& n_inliers, \
-                            std::vector<bool>& inliers_mask, \
                             const unsigned int n_iter=200, \
                             const float inliers_threshold=5.99);
 
