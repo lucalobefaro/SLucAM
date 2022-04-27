@@ -155,7 +155,6 @@ namespace SLucAM {
             const unsigned int expected_landmarks);
         
         bool initializeState(Matcher& matcher, \
-                            const unsigned int& ransac_iters=200, \
                             const float& parallax_threshold=1.0, \
                             const bool verbose=false);
         

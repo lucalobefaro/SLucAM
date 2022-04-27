@@ -31,7 +31,7 @@ function poses = load_poses(filename)
         
         % inv(pose) because we saved them as world wrt cam
         % and here we need cam wrt world
-        poses(:,:,i) = inv(pose);
+        poses(:,:,i) = pose;
         
         line = fgetl(f);
         i = i+1;

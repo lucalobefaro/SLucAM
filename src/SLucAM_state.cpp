@@ -76,7 +76,6 @@ namespace SLucAM {
     * between them. If no such measurement is found then is returned false.  
     */
     bool State::initializeState(Matcher& matcher, \
-                                const unsigned int& ransac_iters, \
                                 const float& parallax_threshold, \
                                 const bool verbose) {
 
@@ -102,7 +101,7 @@ namespace SLucAM {
             const Measurement& meas2 = getNextMeasurement();
             initialization_performed = initialize(meas1, meas2, matcher, \
                         K, predicted_pose, matches, matches_filter, \
-                        triangulated_points, ransac_iters, \
+                        triangulated_points, \
                         parallax_threshold, verbose);
             
             if(verbose && initialization_performed) {

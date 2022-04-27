@@ -70,37 +70,6 @@ namespace SLucAM {
 
 
 // -----------------------------------------------------------------------------
-// Multi-view geometry functions
-// -----------------------------------------------------------------------------
-namespace SLucAM {
-    void estimate_foundamental(const std::vector<cv::KeyPoint>& p_img1, \
-                                const std::vector<cv::KeyPoint>& p_img2, \
-                                const std::vector<cv::DMatch>& matches, \
-                                const std::vector<unsigned int>& idxs, \
-                                cv::Mat& F);
-    void estimate_homography(const std::vector<cv::KeyPoint>& p_img1, \
-                                const std::vector<cv::KeyPoint>& p_img2, \
-                                const std::vector<cv::DMatch>& matches, \
-                                const std::vector<unsigned int>& idxs, \
-                                cv::Mat& H);
-    void extract_X_from_F(const std::vector<cv::KeyPoint>& p_img1, \
-                            const std::vector<cv::KeyPoint>& p_img2, \
-                            const std::vector<cv::DMatch>& matches, \
-                            std::vector<unsigned int>& matches_filter, \
-                            const cv::Mat& F, const cv::Mat& K, \
-                            cv::Mat& X);
-    unsigned int compute_transformation_inliers(const std::vector<cv::KeyPoint>& p_img1, \
-                                                const std::vector<cv::KeyPoint>& p_img2, \
-                                                const std::vector<cv::DMatch>& matches, \
-                                                const std::vector<unsigned int>& matches_filter, \
-                                                std::vector<unsigned int>& matches_inliers, \
-                                                const cv::Mat& R, const cv::Mat& t, \
-                                                const cv::Mat& K);
-} // namespace SLucAM
-
-
-
-// -----------------------------------------------------------------------------
 // Projective ICP functions
 // -----------------------------------------------------------------------------
 namespace SLucAM {
