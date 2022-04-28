@@ -11,7 +11,6 @@
 #include <numeric>
 #include <algorithm>
 #include <iostream>
-#include <opencv2/calib3d.hpp>
 
 
 
@@ -46,6 +45,7 @@ namespace SLucAM {
                     std::vector<cv::DMatch>& matches, \
                     std::vector<unsigned int>& matches_filter, \
                     std::vector<cv::Point3f>& triangulated_points, \
+                    const unsigned int n_iters_ransac, \
                     const float& parallax_threshold, \
                     const bool verbose) {
         
@@ -55,23 +55,28 @@ namespace SLucAM {
         triangulated_points.clear();
         const std::vector<cv::KeyPoint>& p_img1 = meas1.getPoints();
         const std::vector<cv::KeyPoint>& p_img2 = meas2.getPoints();
-        const float F_inliers_threshold = 4;
-        const float H_inliers_threshold = 6;
+        const float F_inliers_threshold = 3.84;
+        const float H_inliers_threshold = 5.99;
+        const float score_dump = std::max(F_inliers_threshold, H_inliers_threshold);
         cv::Mat first_pose = cv::Mat::eye(4,4,CV_32F);
 
         // Match the two measurements
         matcher.match_measurements(meas1, meas2, matches);
 
-        // Compute the Essential matrix and the 
-        // score obtained from the corresponding Fundamental Matrix
-        cv::Mat E;
-        const float F_score = compute_essential(p_img1, p_img2, K, \
-                                                matches, matches_filter, E, \
-                                                F_inliers_threshold);
-
+        // Compute the Fundamental matrix and the score, in the meanwhile fill
+        // the matches_filter vector with the list of inliers in matches
+        cv::Mat F;
+        const float F_score = compute_fundamental(p_img1, p_img2, \
+                                                matches, matches_filter, F, \
+                                                n_iters_ransac, \
+                                                F_inliers_threshold, \
+                                                score_dump);
+                
         // Compute the score obtained from the Homography
-        const float H_score = compute_homography(p_img1, p_img2, K, \
-                                                    matches, H_inliers_threshold);
+        const float H_score = compute_homography(p_img1, p_img2, \
+                                                matches, n_iters_ransac, \
+                                                H_inliers_threshold, \
+                                                score_dump);
 
         // According to [Raúl Mur-Artal, J. M. M. Montiel and Juan D. Tardós. 
         // ORB-SLAM: A Versatile and Accurate Monocular SLAM System. 
@@ -86,23 +91,15 @@ namespace SLucAM {
             return false;
         }
 
-        // Extract the best possible pose from the Essential Matrix (if possible)
-        // and update the inliers filter (matches_filter)
-        if(!extract_X_from_E(p_img1, p_img2, matches, matches_filter, \
-                                E, K, predicted_pose)) {
+        // Extract the best possible pose from the Fundamental Matrix (if possible)
+        // and update the inliers filter (matches_filter) (it also triangulate initial map)
+        if(!initialize_map(p_img1, p_img2, matches, matches_filter, \
+                            F, K, predicted_pose, triangulated_points)) {
             if(verbose) {
                 std::cout << "-> CANNOT COMPUTE A GOOD ENOUGH POSE" << std::endl;
             }
             return false;
         }
-        
-        // Triangulate the initial map
-        linear_triangulation(p_img1, p_img2, matches, matches_filter, \
-                            first_pose, predicted_pose, K, \
-                            triangulated_points);
-        //triangulate_points(p_img1, p_img2, matches, matches_filter, \
-                            first_pose, predicted_pose, K, \
-                            triangulated_points);
                 
         // Compute the parallax between the two poses  
         std::vector<unsigned int> common_landmarks(triangulated_points.size());
@@ -115,7 +112,7 @@ namespace SLucAM {
             if(verbose) {
                 std::cout << "-> NOT ENOUGH PARALLAX " << "(" << parallax << ")" << std::endl;
             }
-            return false;
+            //return false;
         }
 
         // Initialization performed
@@ -125,6 +122,149 @@ namespace SLucAM {
         return true;
 
     }
+
+
+
+    /*
+    * This function allows us to obtain the rotation matrix R and the
+    * translation vector t between two images, for which we have the 
+    * Fundamental Matrix F, composed in a transformation matrix X = [R|t]
+    * and the initial triangulated points
+    * Inputs:
+    *   p_img1/p_img2: points to use in order to understand wich X computed
+    *                   is "better"
+    *   matches: all matches between p_img1 and p_img2, with outliers
+    *   matches_filter: we will consider only those points contained in 
+    *           the matches vector, for wich we have indices in this vector
+    *           We also update this vector with only inliers detected from
+    *           the best solution.
+    *   F: Fundamental Matrix from which to extract X
+    *   K: camera matrix of the two cameras
+    *   X: output Transformation Matrix extracted from E [R|t]
+    *   triangulated_points: the initial map
+    */
+    bool initialize_map(const std::vector<cv::KeyPoint>& p_img1, \
+                        const std::vector<cv::KeyPoint>& p_img2, \
+                        const std::vector<cv::DMatch>& matches, \
+                        const std::vector<unsigned int>& matches_filter, \
+                        const cv::Mat& F, const cv::Mat& K, \
+                        cv::Mat& X, \
+                        std::vector<cv::Point3f>& triangulated_points) {
+
+        // Initialization
+        cv::Mat best_R, best_t;
+        cv::Mat W_mat = cv::Mat::zeros(3,3,CV_32F);
+        W_mat.at<float>(0,1) = -1;
+        W_mat.at<float>(1,0) = 1;
+        W_mat.at<float>(2,2) = 1;
+        unsigned int best_score = 0;
+        unsigned int second_best_score = 0;
+        unsigned int current_score = 0;
+        std::vector<cv::Point3f> current_triangulated_points;
+
+        // Compute the Essential Matrix and decompose it
+        cv::Mat u,w,vt;
+        cv::Mat E = K.t()*F*K;
+        cv::SVD::compute(E,w,u,vt,cv::SVD::FULL_UV);
+
+        // Extract the R matrix (2 solutions)
+        cv::Mat R1 = u*W_mat*vt;
+        if(cv::determinant(R1) < 0) {   // right handed condition
+            R1 = -R1;
+        }
+        cv::Mat R2 = u*W_mat.t()*vt;
+        if(cv::determinant(R2) < 0) {    // right handed condition
+            R2 = -R2;
+        }
+
+        // Extract the t vector and "normalize" it (2 solutions)
+        cv::Mat t1;
+        u.col(2).copyTo(t1);
+        t1=t1/cv::norm(t1);
+        cv::Mat t2 = -t1;
+
+        // Evaluate all solutions
+        const std::vector<cv::Mat> rotations = {R1, R1, R2, R2};
+        const std::vector<cv::Mat> translations = {t1, t2, t1, t2};
+        for(unsigned int i=0; i<4; ++i) {
+            
+            // Evaluate the current solution
+            current_triangulated_points.clear();
+            current_score = compute_transformation_inliers(p_img1, p_img2, matches, matches_filter, \
+                                                            rotations[i], translations[i], K, \
+                                                            current_triangulated_points);
+            
+            // DEBUG:
+            std::cout << std::endl << "SCORE " << i << ": " << current_score << std::endl;
+            std::cout << rotations[i] << std::endl;
+            std::cout << translations[i] << std::endl << std::endl;
+
+            // If it is the best one, save it
+            if(current_score > best_score) {
+                second_best_score = best_score;
+                best_score = current_score;
+                best_R = rotations[i].clone();
+                best_t = translations[i].clone();
+                triangulated_points.swap(current_triangulated_points);
+            } 
+
+        }
+
+        // Check if we have enough inliers and a clear winner
+        if((best_score < 0.6*matches_filter.size()) \
+            || second_best_score > 0.8*best_score) {
+            return false;
+        }
+
+        // Save best solution
+        X = cv::Mat::eye(4,4,CV_32F);
+        best_R.copyTo(X.rowRange(0,3).colRange(0,3));
+        best_t.copyTo(X.rowRange(0,3).col(3));
+
+        std::cout << "BEST X: " << std::endl << X \
+                << std::endl << std::endl;
+                
+        // Pose computed correctly
+        return true;
+    }
+
+
+    /*
+    * This function evaluates a solution (R and t) extracted from the Essential
+    * matrix by computing the number of inliers that such pose has. It also
+    * triangulated all the valid matches.
+    * Inputs:
+    *   p_img1/p_im2: measured points in the two cameras
+    *   matches: matches between p_img1 and p_img2 with outliers
+    *   matches_filter: list of valid matches ids
+    *   matches_inliers: list of matches ids that are considered inliers
+    *   R/t: pose to evaluate
+    *   K: camera matrix of the two cameras
+    *   triangulated_points
+    * Outputs:
+    *   #inliers (size of the matches_inliers vector)
+    */
+    unsigned int compute_transformation_inliers(const std::vector<cv::KeyPoint>& p_img1, \
+                                                const std::vector<cv::KeyPoint>& p_img2, \
+                                                const std::vector<cv::DMatch>& matches, \
+                                                const std::vector<unsigned int>& matches_filter, \
+                                                const cv::Mat& R, const cv::Mat& t, \
+                                                const cv::Mat& K, \
+                                                std::vector<cv::Point3f>& triangulated_points) {
+        
+        // Build the pose
+        cv::Mat X = cv::Mat::eye(4,4,CV_32F);
+        R.copyTo(X.rowRange(0,3).colRange(0,3));
+        t.copyTo(X.rowRange(0,3).col(3));
+
+        // TODO: add some other check if needed
+
+        // Return the number of valid triangulation
+        return triangulate_points(p_img1, p_img2, matches, matches_filter, \
+                                    cv::Mat::eye(4,4,CV_32F), X, K, triangulated_points);
+        
+    }
+
 
 } // namespace SLucAM
 
@@ -137,60 +277,83 @@ namespace SLucAM {
 
     /*
     * This function, given two images (represented by two sets of points)
-    * and matches between them, computes the Essential matrix filtering
-    * inliers, and compute a score for the corresponding Fundamental Matrix
+    * and matches between them, computes the Fundamental matrix filtering
+    * inliers, and compute a score (it uses the RANSAC mechanism)
     * Inputs:
     *   p_img1/p_img2: set of points for the two images
     *   K: camera matrix of the two images
     *   matches: a set of correspondances between the two sets of points
     *   matches_filter: it will contain a list of indices of inliers for matches
-    *   E: the predicted essential matrix
+    *   F: the predicted fundamental matrix
     * Outputs:
     *   F_score: the score of the F matrix
     */
-    const float compute_essential(const std::vector<cv::KeyPoint>& p_img1, \
+    const float compute_fundamental(const std::vector<cv::KeyPoint>& p_img1, \
                                         const std::vector<cv::KeyPoint>& p_img2, \
-                                        const cv::Mat K, \
                                         const std::vector<cv::DMatch>& matches, \
                                         std::vector<unsigned int>& matches_filter, \
-                                        cv::Mat& E, \
-                                        const float& inliers_threshold) {
+                                        cv::Mat& F, \
+                                        const unsigned int n_iters_ransac, \
+                                        const float& inliers_threshold, \
+                                        const float& score_dump) {
         
         // Initialization
         matches_filter.clear();
         const unsigned int n_matches = matches.size();
-        const cv::Mat K_inv = K.inv();
-        
-        // Compute the list of matched points, ordered
-        std::vector<cv::Point2f> matched_p_img1; matched_p_img1.reserve(n_matches);
-        std::vector<cv::Point2f> matched_p_img2; matched_p_img2.reserve(n_matches);
-        for(unsigned int i=0; i<n_matches; ++i) {
-            matched_p_img1.emplace_back(p_img1[matches[i].queryIdx].pt.x,
-                                        p_img1[matches[i].queryIdx].pt.y);
-            matched_p_img2.emplace_back(p_img2[matches[i].trainIdx].pt.x,
-                                        p_img2[matches[i].trainIdx].pt.y);
+        float current_score = 0;
+        float best_score = 0;
+        std::vector<unsigned int> current_matches_filter, best_matches_filter;
+
+        // Normalize points
+        std::vector<cv::KeyPoint> normalized_p_img1, normalized_p_img2;
+        cv::Mat T1, T2;
+        normalize_points(p_img1, normalized_p_img1, T1);
+        normalize_points(p_img2, normalized_p_img2, T2);
+
+        // Generate random sets of matches indices, one for iteration of RANSAC
+        std::vector<std::vector<unsigned int>> random_idxs(n_iters_ransac, \
+                                                    std::vector<unsigned int>(8));
+        std::vector<unsigned int> indices(n_matches);
+        std::iota(indices.begin(), indices.end(), 0);
+        srand(time(NULL));
+        for(unsigned int i=0; i<n_iters_ransac; ++i) {
+            std::random_shuffle(indices.begin(), indices.end(), [](int i) {return rand() % i;});
+            random_idxs[i].assign(indices.begin(), indices.begin()+8);
         }
-        matched_p_img1.shrink_to_fit();
-        matched_p_img2.shrink_to_fit();
 
-        // Compute the Essential matrix and inliers
-        cv::Mat inliers_mask, R, t;
-        E = cv::findEssentialMat(matched_p_img1, matched_p_img2, K, \
-                                cv::RANSAC, 0.999, inliers_threshold, \
-                                inliers_mask);
-        E.convertTo(E, CV_32F);
+        // Perform RANSAC for given iterations
+        for(unsigned int iter=0; iter<n_iters_ransac; ++iter) {
 
-        // Fill the filter of inliers
-        matches_filter.reserve(n_matches);
-        for(unsigned int i=0; i<n_matches; ++i) {
-            if(inliers_mask.at<unsigned char>(i) == 1) {
-                matches_filter.emplace_back(i);
+            // Compute the Foundamental Matrix on the current minimal set
+            estimate_foundamental(normalized_p_img1, normalized_p_img2, matches, \
+                                    random_idxs[iter], F);
+
+            // Denormalize F
+            F = T2.t()*F*T1;
+            
+            // Compute the score with the current F
+            current_score = evaluate_fundamental(p_img1, p_img2, \
+                                                matches, current_matches_filter, F, \
+                                                inliers_threshold, score_dump);
+
+            // If it is the best encountered so far, save it as the best one
+            if(current_score > best_score) {
+                best_score = current_score;
+                best_matches_filter.swap(current_matches_filter);
             }
         }
 
-        // Compute the score of the corresponding Fundamental Matrix
-        cv::Mat F = K_inv.t()*E*K_inv;
-        return evaluate_fundamental(p_img1, p_img2, matches, F, inliers_threshold);
+        // Compute the best version of F using only inliers of the best iteration
+        // (contained in best_matches_filter)
+        estimate_foundamental(normalized_p_img1, normalized_p_img2, matches, \
+                                best_matches_filter, F);
+        F = T2.t()*F*T1;
+
+        // Return the score and fill matches_filter during evaluation
+        return evaluate_fundamental(p_img1, p_img2, \
+                                    matches, matches_filter, F, \
+                                    inliers_threshold, score_dump);
+
     }
 
 
@@ -198,63 +361,95 @@ namespace SLucAM {
     /*
     * Function that, given two images (represented by two sets of points)
     * and matches between them, computes the Homography and returns the 
-    * score.
+    * score (it uses the RANSAC mechanism).
     * Inputs:
     *   p_img1/p_img2: set of points for the two images
     *   K: camera matrix of the two images
     *   matches: a set of correspondances between the two sets of points
+    *   inliers_threshold: value to determine inliers
     *  Outputs:
     *   H_score
     */
     const float compute_homography(const std::vector<cv::KeyPoint>& p_img1, \
                                     const std::vector<cv::KeyPoint>& p_img2, \
-                                    const cv::Mat K, \
                                     const std::vector<cv::DMatch>& matches, \
-                                    const float& inliers_threshold) {
+                                    const unsigned int n_iters_ransac, \
+                                    const float& inliers_threshold, \
+                                    const float& score_dump) {
         
         // Initialization
         const unsigned int n_matches = matches.size();
+        float current_score = 0;
+        float best_score = 0;
+        cv::Mat H;
+        std::vector<unsigned int> current_matches_filter, best_matches_filter;
 
-        // Compute the list of matched points, ordered
-        std::vector<cv::Point2f> matched_p_img1; matched_p_img1.reserve(n_matches);
-        std::vector<cv::Point2f> matched_p_img2; matched_p_img2.reserve(n_matches);
-        for(unsigned int i=0; i<n_matches; ++i) {
-            matched_p_img1.emplace_back(p_img1[matches[i].queryIdx].pt.x,
-                                        p_img1[matches[i].queryIdx].pt.y);
-            matched_p_img2.emplace_back(p_img2[matches[i].trainIdx].pt.x,
-                                        p_img2[matches[i].trainIdx].pt.y);
+        // Normalize points
+        std::vector<cv::KeyPoint> normalize_p_img1, normalize_p_img2;
+        cv::Mat T1, T2;
+        normalize_points(p_img1, normalize_p_img1, T1);
+        normalize_points(p_img2, normalize_p_img2, T2);
+
+        // Generate random sets of matches indices, one for iteration of RANSAC
+        std::vector<std::vector<unsigned int>> random_idxs(n_iters_ransac, \
+                                                    std::vector<unsigned int>(8));
+        std::vector<unsigned int> indices(n_matches);
+        std::iota(indices.begin(), indices.end(), 0);
+        srand(time(NULL));
+        for(unsigned int i=0; i<n_iters_ransac; ++i) {
+            std::random_shuffle(indices.begin(), indices.end(), [](int i) {return rand() % i;});
+            random_idxs[i].assign(indices.begin(), indices.begin()+8);
         }
-        matched_p_img1.shrink_to_fit();
-        matched_p_img2.shrink_to_fit();
 
-        // Compute the Homography
-        cv::Mat H = cv::findHomography(matched_p_img1, matched_p_img2, \
-                                        cv::RANSAC, inliers_threshold);
-        H.convertTo(H, CV_32F);
+        // Perform RANSAC for given iterations
+        for(unsigned int iter=0; iter<n_iters_ransac; ++iter) {
 
-        // Compute the score
-        return evaluate_homography(p_img1, p_img2, matches, H, inliers_threshold);
+            // Compute the Homography Matrix on the current minimal set
+            estimate_homography(normalize_p_img1, normalize_p_img2, matches, \
+                                    random_idxs[iter], H);
+
+            // Denormalize H
+            H = T2.inv()*H*T1;
+            
+            // Compute the score with the current H
+            current_score = evaluate_homography(p_img1, p_img2, \
+                                                matches, current_matches_filter, H, \
+                                                inliers_threshold, score_dump);
+
+            // If it is the best encountered so far, save it as the best one
+            if(current_score > best_score) {
+                best_score = current_score;
+                best_matches_filter.swap(current_matches_filter);
+            }
+        }
+
+        // Compute the best version of H using only inliers of the best iteration
+        // (contained in best_matches_filter)
+        estimate_homography(normalize_p_img1, normalize_p_img2, matches, \
+                                best_matches_filter, H);
+        H = T2.inv()*H*T1;
+
+        // Return the score of the best H
+        return evaluate_homography(p_img1, p_img2, \
+                                    matches, best_matches_filter, H, \
+                                    inliers_threshold, score_dump);
     }
     
-} // namespace SLucAM
 
-
-
-// -----------------------------------------------------------------------------
-// Implementation of functions that evaluates the "goodness" of a matrix F or H
-// -----------------------------------------------------------------------------
-namespace SLucAM {
     
     float evaluate_fundamental(const std::vector<cv::KeyPoint>& p_img1, \
                                 const std::vector<cv::KeyPoint>& p_img2, \
                                 const std::vector<cv::DMatch>& matches, \
+                                std::vector<unsigned int>& matches_filter, \
                                 const cv::Mat& F, \
-                                const float& inliers_threshold) {
+                                const float& inliers_threshold, \
+                                const float& score_dump) {
         
         // Initialization
         unsigned int n_matches = matches.size();
         float d1, d2, Fp1, Fp2, Fp3;
         float score = 0.0;
+        matches_filter.clear();
 
         // Some reference to save time
         const float& F11 = F.at<float>(0,0);
@@ -268,6 +463,7 @@ namespace SLucAM {
         const float& F33 = F.at<float>(2,2);
 
         // For each correspondance
+        matches_filter.reserve(n_matches);
         for(unsigned int i=0; i<n_matches; ++i) {
 
             float is_inlier = true;
@@ -285,10 +481,12 @@ namespace SLucAM {
             Fp3 = F31*p1_x + F32*p1_y + F33;
             d1 = pow(Fp1*p2_x+Fp2*p2_y+Fp3, 2)/(pow(Fp1, 2) + pow(Fp2, 2));
 
-            // If the distance of this reprojection is under the threshold
-            // increment the score
-            if(d1 <= inliers_threshold) {
-                score += 5.991-d1;
+            // If the distance of this reprojection is over the threshold
+            // then discard it as outlier, otherwise compute the score
+            if(d1 > inliers_threshold) {
+                is_inlier = false;
+            } else {
+                score += score_dump-d1;
             }
 
             // Compute the square distance between point 1 and point 2 
@@ -298,13 +496,21 @@ namespace SLucAM {
             Fp3 = F13*p2_x + F23*p2_y + F33;
             d2 = pow(Fp1*p1_x+Fp2*p1_y+Fp3, 2)/(pow(Fp1, 2) + pow(Fp2, 2));
 
-            // If the distance of this reprojection is under the threshold
-            // increment the score
-            if(d2 <= inliers_threshold) {
-                score += 5.991-d2;
+            // If the distance of this reprojection is over the threshold
+            // then discard it as outlier, otherwise compute the score
+            if(d2 > inliers_threshold) {
+                is_inlier = false;
+            } else {
+                score += score_dump-d2;
+            }
+
+            // If the current match is evaluated as inlier save it
+            if(is_inlier) {
+                matches_filter.emplace_back(i);
             }
 
         }
+        matches_filter.shrink_to_fit();
 
         // Return the score
         return score;
@@ -315,10 +521,13 @@ namespace SLucAM {
     float evaluate_homography(const std::vector<cv::KeyPoint>& p_img1, \
                                         const std::vector<cv::KeyPoint>& p_img2, \
                                         const std::vector<cv::DMatch>& matches, \
+                                        std::vector<unsigned int>& matches_filter, \
                                         const cv::Mat& H, \
-                                        const float& inliers_threshold) {
+                                        const float& inliers_threshold, \
+                                        const float& score_dump) {
         
         // Initialization
+        matches_filter.clear();
         unsigned int n_matches = matches.size();
         float d1, d2, Hp1, Hp2, Hp3;
         float score = 0.0;
@@ -347,6 +556,7 @@ namespace SLucAM {
         const float& H33 = H.at<float>(2,2);
 
         // For each correspondance
+        matches_filter.reserve(n_matches);
         for(unsigned int i=0; i<n_matches; ++i) {
 
             float is_inlier = true;
@@ -363,10 +573,12 @@ namespace SLucAM {
             Hp2 = (H21*p1_x + H22*p1_y + H23)/Hp3;
             d1 = pow(p2_x-Hp1, 2) + pow(p2_y-Hp2, 2);
 
-            // If the distance of this reprojection is under the threshold
-            // increment the score
-            if(d1 <= inliers_threshold) {
-                score += 5.991-d1;
+            // If the distance of this reprojection is over the threshold
+            // then discard it as outlier, otherwise compute the score
+            if(d1 > inliers_threshold) {
+                is_inlier = false;
+            } else {
+                score += score_dump-d1;
             }
 
             // Compute the square distance d2 = d(inv(H)x2, x1)
@@ -375,240 +587,24 @@ namespace SLucAM {
             Hp2 = (inv_H21*p2_x + inv_H22*p2_y + inv_H23)/Hp3;
             d2 = pow(p1_x-Hp1, 2) + pow(p1_y-Hp2, 2);
 
-            // If the distance of this reprojection is under the threshold
-            // increment the score
-            if(d2 <= inliers_threshold) {
-                score += 5.991-d2;
+            // If the distance of this reprojection is over the threshold
+            // then discard it as outlier, otherwise compute the score
+            if(d2 > inliers_threshold) {
+                is_inlier = false;
+            } else {
+                score += score_dump-d2;
+            }
+
+            // If the current match is evaluated as inlier save it
+            if(is_inlier) {
+                matches_filter.emplace_back(i);
             }
 
         }
+        matches_filter.shrink_to_fit();
 
         // Return the score
         return score;
-    }
-
-} // namespace SLucAM
-
-
-
-// -----------------------------------------------------------------------------
-// Implementation of functions to compute the pose from the Essential Matrix
-// -----------------------------------------------------------------------------
-namespace SLucAM {
-
-    /*
-    * This function allows us to obtain the rotation matrix R and the
-    * translation vector t between two images, for which we have the 
-    * Essential Matrix E, composed in a transformation matrix X = [R|t].
-    * Inputs:
-    *   p_img1/p_img2: points to use in order to understand wich X computed
-    *                   is "better"
-    *   matches: all matches between p_img1 and p_img2, with outliers
-    *   matches_filter: we will consider only those points contained in 
-    *           the matches vector, for wich we have indices in this vector
-    *           We also update this vector with only inliers detected from
-    *           the best solution.
-    *   E: Essential Matrix from which to extract X
-    *   K: camera matrix of the two cameras
-    *   X: output Transformation Matrix extracted from E [R|t]
-    */
-    bool extract_X_from_E(const std::vector<cv::KeyPoint>& p_img1, \
-                            const std::vector<cv::KeyPoint>& p_img2, \
-                            const std::vector<cv::DMatch>& matches, \
-                            std::vector<unsigned int>& matches_filter, \
-                            const cv::Mat& E, const cv::Mat& K, \
-                            cv::Mat& X) {
-
-        // Initialization
-        cv::Mat best_R, best_t;
-        cv::Mat W_mat = cv::Mat::zeros(3,3,CV_32F);
-        W_mat.at<float>(0,1) = -1;
-        W_mat.at<float>(1,0) = 1;
-        W_mat.at<float>(2,2) = 1;
-        unsigned int best_score = 0;
-        unsigned int second_best_score = 0;
-        unsigned int current_score = 0;
-        std::vector<unsigned int> current_matches_filter, best_matches_filter;
-
-        // Decompose the Essential Matrix
-        cv::Mat u,w,vt;
-        cv::SVD::compute(E,w,u,vt,cv::SVD::FULL_UV);
-
-        // Extract the R matrix (2 solutions)
-        cv::Mat R1 = u*W_mat*vt;
-        if(cv::determinant(R1) < 0) {   // right handed condition
-            R1 = -R1;
-        }
-        cv::Mat R2 = u*W_mat.t()*vt;
-        if(cv::determinant(R2) < 0) {    // right handed condition
-            R2 = -R2;
-        }
-
-        // Extract the t vector and "normalize" it (2 solutions)
-        cv::Mat t1;
-        u.col(2).copyTo(t1);
-        t1=t1/cv::norm(t1);
-        cv::Mat t2 = -t1;
-
-        // Evaluate all solutions
-        const std::vector<cv::Mat> rotations = {R1, R1, R2, R2};
-        const std::vector<cv::Mat> translations = {t1, t2, t1, t2};
-        for(unsigned int i=0; i<4; ++i) {
-            current_score = compute_transformation_inliers(p_img1, p_img2, matches, matches_filter, \
-                                                            current_matches_filter, \
-                                                            rotations[i], translations[i], K);
-            std::cout << std::endl << "SCORE " << i << " " << current_score << std::endl;
-            std::cout << R1 << std::endl;
-            std::cout << t1 << std::endl << std::endl;
-            if(current_score > best_score) {
-                second_best_score = best_score;
-                best_score = current_score;
-                best_R = rotations[i].clone();
-                best_t = translations[i].clone();
-                best_matches_filter.swap(current_matches_filter);
-            } 
-        }
-
-        // Check if we have enough inliers and a clear winner
-        if((best_score < 0.8*matches.size()) \
-            || second_best_score > 0.7*best_score) {
-            return false;
-        }
-
-        // Scale the t vector to avoid too large translations
-        best_t /= 10.0;
-
-        // Save best solution
-        X = cv::Mat::eye(4,4,CV_32F);
-        best_R.copyTo(X.rowRange(0,3).colRange(0,3));
-        best_t.copyTo(X.rowRange(0,3).col(3));
-        matches_filter.swap(best_matches_filter);
-
-        std::cout << "BEST X: " << std::endl << X \
-                << std::endl << std::endl;
-                
-        // Pose computed correctly
-        return true;
-    }
-
-
-
-    /*
-    * This function evaluates a solution (R and t) extracted from the Essential
-    * matrix by computing the number of inliers that such pose has.
-    * Inputs:
-    *   p_img1/p_im2: measured points in the two cameras
-    *   matches: matches between p_img1 and p_img2 with outliers
-    *   matches_filter: list of valid matches ids
-    *   matches_inliers: list of matches ids that are considered inliers
-    *   R/t: pose to evaluate
-    *   K: camera matrix of the two cameras
-    * Outputs:
-    *   #inliers (size of the matches_inliers vector)
-    */
-    unsigned int compute_transformation_inliers(const std::vector<cv::KeyPoint>& p_img1, \
-                                                const std::vector<cv::KeyPoint>& p_img2, \
-                                                const std::vector<cv::DMatch>& matches, \
-                                                const std::vector<unsigned int>& matches_filter, \
-                                                std::vector<unsigned int>& matches_inliers, \
-                                                const cv::Mat& R, const cv::Mat& t, \
-                                                const cv::Mat& K) {
-        
-        // Initialization
-        matches_inliers.clear();
-        const unsigned int n_points = matches_filter.size();
-        const float reprojection_threshold = 4.0;
-        cv::Mat u,w,vt;
-        cv::Mat A = cv::Mat::zeros(4,4,CV_32F);
-        cv::Mat current_3D_point, current_3D_point_wrt2, d1, d2;
-        bool is_current_match_valid;
-        float current_cos_parallax, imx, imy, invz;
-        const float& fx = K.at<float>(0,0);
-        const float& fy = K.at<float>(1,1);
-        const float& cx = K.at<float>(0,2);
-        const float& cy = K.at<float>(1,2);
-
-        // Compute the projection matrices of the two cameras
-        cv::Mat P1 = cv::Mat::zeros(3,4,CV_32F);
-        cv::Mat P2 = cv::Mat::zeros(3,4,CV_32F);
-        K.copyTo(P1.rowRange(0,3).colRange(0,3));   // first pose is at the origin
-        R.copyTo(P2.rowRange(0,3).colRange(0,3));
-        t.copyTo(P2.rowRange(0,3).col(3));
-        P2 = K*P2;
-
-        // Compute the origins of the two cameras
-        cv::Mat O1 = cv::Mat::zeros(3,1,CV_32F);
-        cv::Mat O2 = -R.t()*t;
-
-        // For each valid match
-        matches_inliers.reserve(n_points);
-        for(unsigned int i=0; i<n_points; ++i) {
-
-            // Take references to the current matched points
-            const float& p1_x = p_img1[matches[matches_filter[i]].queryIdx].pt.x;
-            const float& p1_y = p_img1[matches[matches_filter[i]].queryIdx].pt.y;
-            const float& p2_x = p_img2[matches[matches_filter[i]].trainIdx].pt.x;
-            const float& p2_y = p_img2[matches[matches_filter[i]].trainIdx].pt.y;
-
-            // Triangulate them with the linear triangulation method
-            A.row(0) = p1_x*P1.row(2)-P1.row(0);
-            A.row(1) = p1_y*P1.row(2)-P1.row(1);
-            A.row(2) = p2_x*P2.row(2)-P2.row(0);
-            A.row(3) = p2_y*P2.row(2)-P2.row(1);
-            cv::SVD::compute(A,w,u,vt,cv::SVD::MODIFY_A| cv::SVD::FULL_UV);
-            current_3D_point = vt.row(3).t();
-            current_3D_point = current_3D_point.rowRange(0,3)/current_3D_point.at<float>(3);
-            const float& current_3D_point_x = current_3D_point.at<float>(0);
-            const float& current_3D_point_y = current_3D_point.at<float>(1);
-            const float& current_3D_point_z = current_3D_point.at<float>(2);
-
-            // Check that the point is not at infinity
-            if(!std::isfinite(current_3D_point_x) || \
-                !std::isfinite(current_3D_point_y) || \
-                !std::isfinite(current_3D_point_z)) {
-                continue;
-            }
-
-            // Compute the parallax
-            d1 = current_3D_point - O1;
-            d2 = current_3D_point - O2;
-            current_cos_parallax = d1.dot(d2)/(cv::norm(d1)*cv::norm(d2));
-
-            // Check if the point is in front of the first camera
-            if(current_3D_point_z<=0 && current_cos_parallax<0.99998)
-                continue;
-            
-            // Check if the point is in front of the second camera
-            current_3D_point_wrt2 = R*current_3D_point+t;
-            const float& current_3D_point_wrt2_x = current_3D_point_wrt2.at<float>(0);
-            const float& current_3D_point_wrt2_y = current_3D_point_wrt2.at<float>(1);
-            const float& current_3D_point_wrt2_z = current_3D_point_wrt2.at<float>(2);
-            if(current_3D_point_wrt2_z<=0 && current_cos_parallax<0.99998)
-                continue;
-            
-            // Check reprojection error in first image
-            invz = 1.0/current_3D_point.at<float>(2);
-            imx = fx*current_3D_point_x*invz+cx;
-            imy = fy*current_3D_point_y*invz+cy;
-            if(((imx-p1_x)*(imx-p1_x)+(imy-p1_y)*(imy-p1_y)) > \
-                    reprojection_threshold)
-                continue;
-
-            // Check reprojection error in second image
-            invz = 1.0/current_3D_point_wrt2.at<float>(2);
-            imx = fx*current_3D_point_wrt2_x*invz+cx;
-            imy = fy*current_3D_point_wrt2_y*invz+cy;
-            if(((imx-p2_x)*(imx-p2_x)+(imy-p2_y)*(imy-p2_y)) > \
-                    reprojection_threshold)
-                continue;
-            
-            // All checks passed, it is an inlier
-            matches_inliers.emplace_back(matches_filter[i]);
-
-        }
-
-        return matches_inliers.size();
-
     }
 
 } // namespace SLucAM

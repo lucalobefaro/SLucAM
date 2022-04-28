@@ -35,6 +35,7 @@ int main() {
     const std::string results_folder = "../results/";
 
     const unsigned int n_orb_features = 1000;
+    const unsigned int n_iters_ransac = 1000;
 
     const unsigned int how_many_meas_optimization = 10;
     const unsigned int n_iters_POSIT = 50;
@@ -55,7 +56,8 @@ int main() {
     // -----------------------------------------------------------------------------
     // Load Dataset
     // -----------------------------------------------------------------------------
-    cv::Ptr<cv::Feature2D> orb_detector = cv::ORB::create(n_orb_features);
+    cv::Ptr<cv::Feature2D> orb_detector = cv::ORB::create(n_orb_features, 1.2, 8, 31, \
+                                                            0, 2, cv::ORB::FAST_SCORE);
     cout << endl << "--- LOADING THE DATASET ---" << endl;
     bool loaded;
     if(synthetic)
@@ -81,6 +83,7 @@ int main() {
     // -----------------------------------------------------------------------------
     cout << "--- INITIALIZATION ---" << endl;
     if(!state.initializeState(matcher, \
+                                n_iters_ransac, \
                                 parallax_threshold, \
                                 verbose)) {
         cout << "ERROR: unable to perform initialization" << endl;
@@ -231,7 +234,7 @@ int main() {
 
 
 
-/* RANSAC OF OPENCV
+/* ROPENCV INITIALIZATION
     std::cout << std::endl << "RANSAC OPENCV" << std::endl;
     const SLucAM::Measurement& meas1 = state.getMeasurements()[0];
     const SLucAM::Measurement& meas2 = state.getMeasurements()[1];

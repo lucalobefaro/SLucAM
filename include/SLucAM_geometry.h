@@ -70,6 +70,24 @@ namespace SLucAM {
 
 
 // -----------------------------------------------------------------------------
+// Multi-view geometry functions
+// -----------------------------------------------------------------------------
+namespace SLucAM {
+    void estimate_foundamental(const std::vector<cv::KeyPoint>& p_img1, \
+                                const std::vector<cv::KeyPoint>& p_img2, \
+                                const std::vector<cv::DMatch>& matches, \
+                                const std::vector<unsigned int>& idxs, \
+                                cv::Mat& F);
+    void estimate_homography(const std::vector<cv::KeyPoint>& p_img1, \
+                                const std::vector<cv::KeyPoint>& p_img2, \
+                                const std::vector<cv::DMatch>& matches, \
+                                const std::vector<unsigned int>& idxs, \
+                                cv::Mat& H);
+} // namespace SLucAM
+
+
+
+// -----------------------------------------------------------------------------
 // Projective ICP functions
 // -----------------------------------------------------------------------------
 namespace SLucAM {

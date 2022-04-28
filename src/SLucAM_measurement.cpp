@@ -32,9 +32,6 @@ namespace SLucAM {
         this->_points = points;
         this->_descriptors = descriptors;
 
-        // Normalize points
-        normalize_points(this->_points, this->_normalized_points, this->_T_norm);
-
         // Assign the id to the measurement
         this->_meas_id = Measurement::_next_id;
         Measurement::_next_id++;

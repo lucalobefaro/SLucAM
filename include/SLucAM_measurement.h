@@ -34,14 +34,8 @@ namespace SLucAM {
         const std::vector<cv::KeyPoint>& getPoints() const \
                 {return this->_points;};
 
-        const std::vector<cv::KeyPoint>& getNormalizedPoints() const \
-                {return this->_normalized_points;};
-
         const cv::Mat& getDescriptors() const \
                 {return this->_descriptors;};
-
-        const cv::Mat& getTNorm() const \
-                {return this->_T_norm;};
 
         const unsigned int getId() const \
                 {return this->_meas_id;};
@@ -57,15 +51,11 @@ namespace SLucAM {
 
     private:
 
-        // The set of points in the image and the same point normalized
+        // The set of points in the image
         std::vector<cv::KeyPoint> _points;
-        std::vector<cv::KeyPoint> _normalized_points;
 
         // The set of descriptors, one per point in the image
         cv::Mat _descriptors;
-
-        // The matrix used to normalize the points
-        cv::Mat _T_norm;
 
         // The id of the current measurement
         unsigned int _meas_id;

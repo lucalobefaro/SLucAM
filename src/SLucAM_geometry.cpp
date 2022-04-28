@@ -59,31 +59,33 @@ namespace SLucAM {
         // Shift the points such that the centroid will be the origin
         // and in the meantime compute the average distance from the
         // origin
-        float average_distance = 0;
+        float average_distance_x = 0;
+        float average_distance_y = 0;
         for(unsigned int i=0; i<n_points; i++) {
             normalized_points[i].pt.x = points[i].pt.x-mu_x;
             normalized_points[i].pt.y = points[i].pt.y-mu_y;
-            average_distance += sqrt((normalized_points[i].pt.x*\
-                                        normalized_points[i].pt.x)+\
-                                     (normalized_points[i].pt.y*\
-                                        normalized_points[i].pt.y));
+            
+            average_distance_x += std::fabs(normalized_points[i].pt.x);
+            average_distance_y += std::fabs(normalized_points[i].pt.y);
         }
-        average_distance /= n_points;
+        average_distance_x /= n_points;
+        average_distance_y /= n_points;
         
         // Scale the points such that the average distance from 
-        // the origin is sqrt(2)
-        float scale = sqrt(2)/average_distance;
+        // the origin is 1
+        float scale_x = 1.0/average_distance_x;
+        float scale_y = 1.0/average_distance_y;
         for(unsigned int i=0; i<n_points; i++) {
-            normalized_points[i].pt.x *= scale;
-            normalized_points[i].pt.y *= scale;
+            normalized_points[i].pt.x *= scale_x;
+            normalized_points[i].pt.y *= scale_y;
         }
 
         // Ensemble the T matrix
         T = cv::Mat::eye(3, 3, CV_32F);
-        T.at<float>(0,0) = scale;
-        T.at<float>(1,1) = scale;
-        T.at<float>(0,2) = -mu_x*scale;
-        T.at<float>(1,2) = -mu_y*scale; 
+        T.at<float>(0,0) = scale_x;
+        T.at<float>(1,1) = scale_y;
+        T.at<float>(0,2) = -mu_x*scale_x;
+        T.at<float>(1,2) = -mu_y*scale_y; 
     }
 
 
@@ -699,6 +701,122 @@ namespace SLucAM {
         return v;
     }
 
+} // namespace SLucAM
+
+
+
+// -----------------------------------------------------------------------------
+// Implementation of multi-view geometry functions
+// -----------------------------------------------------------------------------
+namespace SLucAM {
+
+    /*
+    * Function that, given a set of, at least, 8 couples of points, estimate
+    * the Foundamental matrix (implementation of the 8-point algorithm).
+    * Better if the points p_img1 and p_img2 are normalized, in such case
+    * please de-normalize F after this function.
+    * Inputs:
+    *   p_img1/p_img2: input points
+    *   matches: the correspondances between the two set of points
+    *   idxs: we will compute the F matrix only on those points contained in 
+    *           the matches vector, for wich we have indices in this vector idxs
+    *   F: estimated Foundamental Matrix
+    */
+    void estimate_foundamental(const std::vector<cv::KeyPoint>& p_img1, \
+                                const std::vector<cv::KeyPoint>& p_img2, \
+                                const std::vector<cv::DMatch>& matches, \
+                                const std::vector<unsigned int>& idxs, \
+                                cv::Mat& F) {
+        
+        // Initialization
+        unsigned int n_points = idxs.size();
+
+        // Ensemble the A matrix for equations
+        cv::Mat A = cv::Mat::ones(n_points,9,CV_32F);
+        for(unsigned int i = 0; i<n_points; ++i) {
+            const float& p1_x = p_img1[matches[idxs[i]].queryIdx].pt.x;
+            const float& p1_y = p_img1[matches[idxs[i]].queryIdx].pt.y;
+            const float& p2_x = p_img2[matches[idxs[i]].trainIdx].pt.x;
+            const float& p2_y = p_img2[matches[idxs[i]].trainIdx].pt.y;
+            A.at<float>(i,0) = p1_x * p2_x;
+            A.at<float>(i,1) = p1_y * p2_x;
+            A.at<float>(i,2) = p2_x;
+            A.at<float>(i,3) = p1_x * p2_y;
+            A.at<float>(i,4) = p1_y * p2_y;
+            A.at<float>(i,5) = p2_y;
+            A.at<float>(i,6) = p1_x;
+            A.at<float>(i,7) = p1_y;
+        }
+
+        // Compute the linear least square solution
+        cv::Mat u,w,vt;
+        cv::SVDecomp(A,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
+        cv::Mat unconstrained_F = vt.row(8).reshape(0, 3);
+
+        // Constrain F making the rank 2 by zeroing the last
+        // singular value
+        cv::SVDecomp(unconstrained_F,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
+        w.at<float>(2)=0;
+        F = u*cv::Mat::diag(w)*vt;
+    }
+
+
+
+    /*
+    * Function that, given a set of, at least, 4 couples of points, estimate
+    * the Homography (implementation of the DLT algorithm).
+    * We assume that the points p_img1 and p_img2 are normalized and,
+    * please, de-normalize H after this function.
+    * Inputs:
+    *   p_img1/p_img2: input points
+    *   H: estimated Homography
+    *   matches: the correspondances between the two set of points
+    *   idxs: we will compute the H matrix only on those points contained in 
+    *           the matches vector, for wich we have indices in this vector idxs
+    *           In particular we will consider only the first 4 elements of it
+    *           (the minimal set to compute H)
+    */
+    void estimate_homography(const std::vector<cv::KeyPoint>& p_img1, \
+                                const std::vector<cv::KeyPoint>& p_img2, \
+                                const std::vector<cv::DMatch>& matches, \
+                                const std::vector<unsigned int>& idxs, \
+                                cv::Mat& H) {
+        
+        // Initialization
+        unsigned int n_points = 4; // We use only the first 4 points in idxs
+
+        // Ensemble the A matrix
+        cv::Mat A = cv::Mat::zeros(2*n_points,9,CV_32F);
+        for(int i=0; i<n_points; i++)
+        {
+            const float& p1_x = p_img1[matches[idxs[i]].queryIdx].pt.x;
+            const float& p1_y = p_img1[matches[idxs[i]].queryIdx].pt.y;
+            const float& p2_x = p_img2[matches[idxs[i]].trainIdx].pt.x;
+            const float& p2_y = p_img2[matches[idxs[i]].trainIdx].pt.y;
+
+            A.at<float>(2*i,3) = -p1_x;
+            A.at<float>(2*i,4) = -p1_y;
+            A.at<float>(2*i,5) = -1;
+            A.at<float>(2*i,6) = p2_y*p1_x;
+            A.at<float>(2*i,7) = p2_y*p1_y;
+            A.at<float>(2*i,8) = p2_y;
+            A.at<float>(2*i+1,0) = p1_x;
+            A.at<float>(2*i+1,1) = p1_y;
+            A.at<float>(2*i+1,2) = 1;
+            A.at<float>(2*i+1,6) = -p2_x*p1_x;
+            A.at<float>(2*i+1,7) = -p2_x*p1_y;
+            A.at<float>(2*i+1,8) = -p2_x;
+        }
+
+        // compute SVD of A
+        cv::Mat u,w,vt;
+        cv::SVDecomp(A,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
+
+        // Use the last column of V to build the h vector and, reshaping it
+        // we obtain the homography matrix
+        H = vt.row(8).reshape(0, 3);
+    }
+    
 } // namespace SLucAM
 
 
