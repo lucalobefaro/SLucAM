@@ -38,11 +38,11 @@ int main() {
     const unsigned int n_iters_ransac = 2000;
 
     const unsigned int how_many_meas_optimization = 10;
-    const unsigned int n_iters_POSIT = 50;
-    const unsigned int kernel_threshold_POSIT = 5;
-    const float inliers_threshold_POSIT = 10;
-    const float damping_factor = 1;
-    const unsigned int n_iters_BA = 50;
+
+    const unsigned int kernel_threshold_POSIT = 500;
+    const float inliers_threshold_POSIT = 1000;
+
+    const unsigned int n_iters_total_BA = 50;
     
     const unsigned int local_map_size = 8;
     const float parallax_threshold = 1.0;
@@ -70,11 +70,13 @@ int main() {
     cout << "--- DONE! ---" << endl << endl;
 
 
+
     // -----------------------------------------------------------------------------
     // Create Matcher
     // -----------------------------------------------------------------------------
     SLucAM::Matcher matcher;
     //SLucAM::Matcher matcher(associations);
+
 
 
     // -----------------------------------------------------------------------------
@@ -96,46 +98,16 @@ int main() {
 
 
 
-    /* -----------------------------------------------------------------------------
-    // OPTIMIZE INITIALIZATION
     // -----------------------------------------------------------------------------
-    cout << "--- OPTIMIZING INITIALIZATION ---" << endl;
-    if(state.reaminingMeasurements() == 0) {
-        cout << "ERROR: no more measurement to optimize initialization" << endl;
-        return 1;
-    }
-    
-    for(unsigned int i=0; i<how_many_meas_optimization; ++i) {
-        if(!state.integrateNewMeasurement(matcher, \
-                                            false, \
-                                            n_iters_POSIT, \
-                                            kernel_threshold_POSIT, \
-                                            inliers_threshold_POSIT, \
-                                            damping_factor, \
-                                            triangulation_window, \
-                                            parallax_threshold, \
-                                            new_landmark_threshold, \
-                                            verbose)) {
-            cout << "ERROR: no more measurement to integrate or no enough correspondances finded" << endl;
-            return 1;
-        }
-    }
-    state.performTotalBA(n_iters_BA, verbose);
-    cout << "--- DONE! ---" << endl << endl;
-    */
-
-    /* -----------------------------------------------------------------------------
     // INTEGRATE NEW MEASUREMENT AND EXPAND MAP
     // -----------------------------------------------------------------------------
     cout << "--- ESPLORATION STARTED ---" << endl;
     while(state.reaminingMeasurements() != 0) {
         state.integrateNewMeasurement(matcher, \
                                     true, \
-                                    n_iters_POSIT, \
+                                    local_map_size, \
                                     kernel_threshold_POSIT, \
                                     inliers_threshold_POSIT, \
-                                    damping_factor, \
-                                    local_map_size, \
                                     parallax_threshold, \
                                     new_landmark_threshold, \
                                     verbose);
@@ -146,7 +118,8 @@ int main() {
     }
     //state.performTotalBA(n_iters_BA, verbose);
     cout << "--- DONE! ---" << endl << endl;
-    */
+    
+
 
     /* -----------------------------------------------------------------------------
     // SAVE RESULTS

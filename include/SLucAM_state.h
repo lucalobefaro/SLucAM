@@ -160,15 +160,13 @@ namespace SLucAM {
                             const bool verbose=false);
         
         bool integrateNewMeasurement(Matcher& matcher, \
-                                    const bool& triangulate_new_points=true, \
-                                    const unsigned int& posit_n_iters=50, \
-                                    const float& posit_kernel_threshold=1000, \
-                                    const float& posit_threshold_to_ignore=5000, \
-                                    const float& posit_damping_factor=1, \
-                                    const unsigned int& local_map_size=6, \
-                                    const float& parallax_threshold=1.0, \
-                                    const float& new_landmark_threshold=0.02, \
-                                    const bool verbose=false);
+                                        const bool& triangulate_new_points, \
+                                        const unsigned int& local_map_size, \
+                                        const float& kernel_threshold_POSIT, \
+                                        const float& inliers_threshold_POSIT, \
+                                        const float& parallax_threshold, \
+                                        const float& new_landmark_threshold, \
+                                        const bool verbose);
         
         void performTotalBA(const unsigned int& n_iters, const bool verbose=false);
 
@@ -202,8 +200,8 @@ namespace SLucAM {
             {return this->_keyframes;};
     
     private: 
-
-        static bool predictPoseG2o(cv::Mat& guessed_pose, \
+        
+        static bool predictPose(cv::Mat& guessed_pose, \
                                 const Measurement& meas_to_predict, \
                                 std::vector<std::pair<unsigned int, unsigned int>>& \
                                         points_associations, \
@@ -213,21 +211,10 @@ namespace SLucAM {
                                 const std::vector<Measurement>& measurements, \
                                 const std::vector<cv::Mat>& poses, \
                                 const cv::Mat& K, \
+                                const float& kernel_threshold_POSIT, \
+                                const float& inliers_threshold_POSIT, \
                                 const unsigned int& local_map_size, \
-                                const bool& verbose=false);
-        
-        static bool predictPoseMyPosit(cv::Mat& guessed_pose, \
-                                        const Measurement& meas_to_predict, \
-                                        std::vector<std::pair<unsigned int, unsigned int>>& \
-                                                points_associations, \
-                                        Matcher& matcher, \
-                                        const std::vector<Keyframe>& keyframes, \
-                                        const std::vector<cv::Point3f>& landmarks, \
-                                        const std::vector<Measurement>& measurements, \
-                                        const std::vector<cv::Mat>& poses, \
-                                        const cv::Mat& K, \
-                                        const unsigned int& local_map_size, \
-                                        const bool& verbose=false);
+                                const bool verbose=false);
 
         static void triangulateNewPoints(std::vector<Keyframe>& keyframes, \
                                         std::vector<cv::Point3f>& landmarks, \

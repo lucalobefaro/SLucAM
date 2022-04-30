@@ -931,10 +931,10 @@ namespace SLucAM {
                                         unsigned int>>& points_associations, \
                                 const std::vector<cv::Point3f>& landmarks, \
                                 const cv::Mat& K, \
-                                const unsigned int& n_iterations, \
                                 const float& kernel_threshold, \
                                 const float& threshold_to_ignore, \
-                                const float& damping_factor) {
+                                const unsigned int n_iterations, \
+                                const float damping_factor) {
         
         // Initialization
         const unsigned int n_observations = points_associations.size();

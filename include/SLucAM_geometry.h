@@ -98,10 +98,10 @@ namespace SLucAM {
                                         unsigned int>>& points_associations, \
                                 const std::vector<cv::Point3f>& landmarks, \
                                 const cv::Mat& K, \
-                                const unsigned int& n_iterations, \
                                 const float& kernel_threshold, \
                                 const float& threshold_to_ignore, \
-                                const float& damping_factor);
+                                const unsigned int n_iterations=50, \
+                                const float damping_factor=1);
     bool error_and_jacobian_Posit(const cv::Mat& guessed_pose, \
                                 const cv::Point3f& guessed_landmark, \
                                 const cv::KeyPoint& measured_point, \
