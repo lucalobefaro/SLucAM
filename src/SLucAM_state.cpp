@@ -132,6 +132,23 @@ namespace SLucAM {
                     meas2_points_associations, this->_keyframes.size()-1, \
                     verbose);
         
+        // Optimize initial map
+        performTotalBA(20, false);
+
+        // Scale compute pose's position and points to avoid too large distances
+        cv::Mat& pose1 = this->_poses[1];
+        const unsigned int n_points = this->_landmarks.size();
+        const float scale_factor = compute_median_distance_cam_points(this->_landmarks, pose1);
+        pose1.at<float>(0,3) /= scale_factor;
+        pose1.at<float>(1,3) /= scale_factor;
+        pose1.at<float>(2,3) /= scale_factor;
+        for(unsigned int j=0; j<n_points; ++j) {
+            this->_landmarks[j] /= scale_factor;
+        }
+
+        std::cout << this->_poses[1] << std::endl;
+        std::cout << scale_factor << std::endl;
+
         return true;
 
     }

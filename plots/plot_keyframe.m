@@ -35,19 +35,20 @@ function res = plot_keyframe(folder, idx)
     plot_pose_graph(poses, "top");
     xlabel("x");
     ylabel("y");
-    title("Pose graph (top view)");
+    set(gca, 'Ydir', 'reverse')
+    title("Pose graph (side view)");
 
     nexttile(9, [1,1]);
     plot_pose_graph(poses, "side");
     xlabel("x");
     ylabel("z");
-    title("Pose graph (side view)");
+    title("Pose graph (top view)");
 
     % Plot poses and landmarks
     nexttile(2, [3 3]);
     plot_poses(poses);
     hold on;
-    scatter3(landmarks(1,:), landmarks(2,:), landmarks(3,:));   % plot landmarks
+    scatter3(landmarks(1,:), landmarks(2,:), landmarks(3,:), 10, [0 0.6 1]);   % plot landmarks
     hold on;
     plot_edges(poses, edges, landmarks);
     hold on;
@@ -56,7 +57,7 @@ function res = plot_keyframe(folder, idx)
     %view([0 80]);
     view([0 -80]);
     %axis([-10 10 -10 10 -0.3 30])
-    axis([-2 2 -2 2 -0.3 5])
+    axis([-3 3 -3 3 -0.5 6])
     camproj('perspective');
     title("World");
     

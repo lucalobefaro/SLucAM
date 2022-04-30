@@ -24,14 +24,12 @@ namespace SLucAM {
     void normalize_points(const std::vector<cv::KeyPoint>& points, \
                             std::vector<cv::KeyPoint>& normalized_points, \
                             cv::Mat& T);
+    cv::Mat compute_projection_matrix(const cv::Mat& T, const cv::Mat& K);
+    bool triangulate_point(const float& p1_x, const float& p1_y, \
+                                    const float& p2_x, const float& p2_y, \
+                                    const cv::Mat& P1, const cv::Mat& P2, \
+                                    cv::Mat& p3D);
     unsigned int triangulate_points(const std::vector<cv::KeyPoint>& p_img1, \
-                                    const std::vector<cv::KeyPoint>& p_img2, \
-                                    const std::vector<cv::DMatch>& matches, \
-                                    const std::vector<unsigned int>& idxs, \
-                                    const cv::Mat& pose1, const cv::Mat& pose2, \
-                                    const cv::Mat& K, \
-                                    std::vector<cv::Point3f>& triangulated_points);
-    unsigned int linear_triangulation(const std::vector<cv::KeyPoint>& p_img1, \
                                     const std::vector<cv::KeyPoint>& p_img2, \
                                     const std::vector<cv::DMatch>& matches, \
                                     const std::vector<unsigned int>& idxs, \
@@ -50,6 +48,8 @@ namespace SLucAM {
                             std::vector<cv::KeyPoint>& undistorted_keypoints, \
                             const cv::Mat& distorsion_coefficients, \
                             const cv::Mat& K);
+    float compute_median_distance_cam_points(const std::vector<cv::Point3f>& points, \
+                                            const cv::Mat& pose);
 } // namespace SLucAM
 
 

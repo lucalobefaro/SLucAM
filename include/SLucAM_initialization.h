@@ -30,7 +30,7 @@ namespace SLucAM {
                     std::vector<unsigned int>& matches_filter, \
                     std::vector<cv::Point3f>& triangulated_points, \
                     const unsigned int n_iters_ransac = 200, \
-                    const float& parallax_threshold=1.0, \
+                    const float parallax_threshold=1.0, \
                     const bool verbose=false);
     
     bool initialize_map(const std::vector<cv::KeyPoint>& p_img1, \
@@ -39,7 +39,10 @@ namespace SLucAM {
                         const std::vector<unsigned int>& matches_filter, \
                         const cv::Mat& F, const cv::Mat& K, \
                         cv::Mat& X, \
-                        std::vector<cv::Point3f>& triangulated_points);
+                        std::vector<cv::Point3f>& triangulated_points, \
+                        unsigned int& n_inliers, \
+                        const float parallax_threshold=1.0, \
+                        const bool verbose=false);
     
     unsigned int compute_transformation_inliers(const std::vector<cv::KeyPoint>& p_img1, \
                                                 const std::vector<cv::KeyPoint>& p_img2, \
@@ -47,7 +50,8 @@ namespace SLucAM {
                                                 const std::vector<unsigned int>& matches_filter, \
                                                 const cv::Mat& R, const cv::Mat& t, \
                                                 const cv::Mat& K, \
-                                                std::vector<cv::Point3f>& triangulated_points);
+                                                std::vector<cv::Point3f>& triangulated_points, \
+                                                float& parallax);
 
 } // namespace SLucAM
 

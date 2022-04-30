@@ -31,16 +31,16 @@ int main() {
     if(synthetic) 
         dataset_folder = "../data/datasets/my_synthetic_dataset/";
     else
-        dataset_folder = "../data/datasets/tum_dataset_2/";
+        dataset_folder = "../data/datasets/tum_dataset_teddy/";
     const std::string results_folder = "../results/";
 
-    const unsigned int n_orb_features = 1000;
-    const unsigned int n_iters_ransac = 1000;
+    const unsigned int n_orb_features = 5000;
+    const unsigned int n_iters_ransac = 2000;
 
     const unsigned int how_many_meas_optimization = 10;
     const unsigned int n_iters_POSIT = 50;
-    const unsigned int kernel_threshold_POSIT = 100;
-    const float inliers_threshold_POSIT = 500;
+    const unsigned int kernel_threshold_POSIT = 5;
+    const float inliers_threshold_POSIT = 10;
     const float damping_factor = 1;
     const unsigned int n_iters_BA = 50;
     
@@ -56,8 +56,7 @@ int main() {
     // -----------------------------------------------------------------------------
     // Load Dataset
     // -----------------------------------------------------------------------------
-    cv::Ptr<cv::Feature2D> orb_detector = cv::ORB::create(n_orb_features, 1.2, 8, 31, \
-                                                            0, 2, cv::ORB::FAST_SCORE);
+    cv::Ptr<cv::Feature2D> orb_detector = cv::ORB::create(n_orb_features);
     cout << endl << "--- LOADING THE DATASET ---" << endl;
     bool loaded;
     if(synthetic)

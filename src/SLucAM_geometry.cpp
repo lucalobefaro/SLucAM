@@ -15,6 +15,7 @@
 #include <Eigen/SVD>
 #include <opencv2/core/core.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
+#include <opencv2/core/eigen.hpp>
 
 // TODO delete this
 #include <iostream>
@@ -89,6 +90,70 @@ namespace SLucAM {
     }
 
 
+
+    /*
+    * Function that, givena transformation matrix (T) and a camera matrix (K)
+    * returns the 3x4 projection matrix P=K*[I|0]*T
+    */
+    cv::Mat compute_projection_matrix(const cv::Mat& T, const cv::Mat& K) {
+        const cv::Mat R = T.rowRange(0,3).colRange(0,3);
+        const cv::Mat t = T.rowRange(0,3).col(3);
+        cv::Mat P(3,4,CV_32F);
+        R.copyTo(P.rowRange(0,3).colRange(0,3));
+        t.copyTo(P.rowRange(0,3).col(3));
+        return K*P;
+    }
+
+
+    /*
+    * Function that given a point seen from camera 1 (p1_x, p1_y) and the same
+    * point seen from the camera 2 (p2_x, p2_y) and the corresponding projection
+    * matrices (P1 and P2), compute the corresponding 3D point by linear triangulation.
+    */
+    bool triangulate_point(const float& p1_x, const float& p1_y, \
+                                    const float& p2_x, const float& p2_y, \
+                                    const cv::Mat& P1, const cv::Mat& P2, \
+                                    cv::Mat& p3D) {
+        // Ensemble the A matrix of equations
+        cv::Mat A(4,4,CV_32F);
+        A.row(0) = p1_x*P1.row(2)-P1.row(0);
+        A.row(1) = p1_y*P1.row(2)-P1.row(1);
+        A.row(2) = p2_x*P2.row(2)-P2.row(0);
+        A.row(3) = p2_y*P2.row(2)-P2.row(1);
+
+        // Go in the Eigen representation
+        Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, \
+                                    Eigen::Dynamic, \
+                                    Eigen::RowMajor>> A_Eigen \
+                                    (A.ptr<float>(), A.rows, A.cols);
+
+        // Triangulate with linear method
+        Eigen::JacobiSVD<Eigen::Matrix4f> svd_A(A_Eigen, Eigen::ComputeFullV);
+        Eigen::Vector4f point_3D_eigen = svd_A.matrixV().col(3);
+
+        // Check the validity of the triangulated point
+        if(point_3D_eigen(3)==0)
+            return false;
+
+        // Put it in Euclidean coordinates
+        Eigen::Vector3f point_3D_new = point_3D_eigen.head(3)/point_3D_eigen(3);
+
+        // Check if the point is at a finite position
+        if(!isfinite(point_3D_new(0)) || \
+            !isfinite(point_3D_new(1)) || \
+            !isfinite(point_3D_new(2))) {
+            return false;
+        }
+        
+        // Back to OpenCV representation
+        cv::eigen2cv(point_3D_new, p3D);
+
+        return true;
+
+    }
+
+
+
     /*
     * Function that triangulates a bunch of points seen from two cameras.
     * Inputs:
@@ -114,54 +179,17 @@ namespace SLucAM {
         // Initialization
         const unsigned int n_points = idxs.size();
         unsigned int n_triangulated_points = 0;
-        triangulated_points.reserve(n_points);
-
-        // Compute the inverse of the camera matrix
-        // TODO: this computation can be avoided to be done each time
-        const cv::Mat inv_K = K.inv();
-
-        // Compute the projection matrix for camera 1 (with references)
-        //  P1 = R1'*K.inv()
-        const cv::Mat pose1_inv = invert_transformation_matrix(pose1);
-        const cv::Mat P1 = pose1_inv.rowRange(0,3).colRange(0,3)*inv_K;
-        const float& P1_11 = P1.at<float>(0,0);
-        const float& P1_12 = P1.at<float>(0,1);
-        const float& P1_13 = P1.at<float>(0,2);
-        const float& P1_21 = P1.at<float>(1,0);
-        const float& P1_22 = P1.at<float>(1,1);
-        const float& P1_23 = P1.at<float>(1,2);
-        const float& P1_31 = P1.at<float>(2,0);
-        const float& P1_32 = P1.at<float>(2,1);
-        const float& P1_33 = P1.at<float>(2,2);
-
-        // Compute the projection matrix for camera 2 (with references)
-        //  P2 = R2'*K.inv()
-        const cv::Mat pose2_inv = invert_transformation_matrix(pose2);
-        const cv::Mat P2 = pose2_inv.rowRange(0,3).colRange(0,3)*inv_K;
-        const float& P2_11 = P2.at<float>(0,0);
-        const float& P2_12 = P2.at<float>(0,1);
-        const float& P2_13 = P2.at<float>(0,2);
-        const float& P2_21 = P2.at<float>(1,0);
-        const float& P2_22 = P2.at<float>(1,1);
-        const float& P2_23 = P2.at<float>(1,2);
-        const float& P2_31 = P2.at<float>(2,0);
-        const float& P2_32 = P2.at<float>(2,1);
-        const float& P2_33 = P2.at<float>(2,2);
-
-        // Take references to the position of the origin of camera 1
-        cv::Mat O1 = pose1_inv.col(3).rowRange(0,3);
-        const float& O1_x = O1.at<float>(0);
-        const float& O1_y = O1.at<float>(1);
-        const float& O1_z = O1.at<float>(2);
-
-        // Take references to the position of the origin of camera 2
-        cv::Mat O2 = pose2_inv.col(3).rowRange(0,3);
-        const float& O2_x = O2.at<float>(0);
-        const float& O2_y = O2.at<float>(1);
-        const float& O2_z = O2.at<float>(2);
+        const cv::Mat P1 = compute_projection_matrix(pose1, K);
+        const cv::Mat P2 = compute_projection_matrix(pose2, K);
         
         // Triangulate each couple of points
+        triangulated_points.reserve(n_points);
         for(unsigned int i=0; i<n_points; ++i) {
+
+            // Insert an invalid point (if it passes all the checks it
+            // wil be updated), an invalid point is assumed at position (0,0,0)
+            // TODO: this assumption can be avoided
+            triangulated_points.emplace_back(cv::Point3f(0,0,0));
 
             // Take references to the current couple of points
             const float& p1_x = p_img1[matches[idxs[i]].queryIdx].pt.x;
@@ -169,134 +197,33 @@ namespace SLucAM {
             const float& p2_x = p_img2[matches[idxs[i]].trainIdx].pt.x;
             const float& p2_y = p_img2[matches[idxs[i]].trainIdx].pt.y;
 
-            // Ensemble the matrix D as [-d1,d2] where d1 and d2 are
-            // the rays starting from p1 and p2 respectively
-            cv::Mat D = cv::Mat::eye(3,2,CV_32F);
-            D.at<float>(0,0) = -(P1_11*p1_x + P1_12*p1_y + P1_13);
-            D.at<float>(1,0) = -(P1_21*p1_x + P1_22*p1_y + P1_23);
-            D.at<float>(2,0) = -(P1_31*p1_x + P1_32*p1_y + P1_33);
-            D.at<float>(0,1) = (P2_11*p2_x + P2_12*p2_y + P2_13);
-            D.at<float>(1,1) = (P2_21*p2_x + P2_22*p2_y + P2_23);;
-            D.at<float>(2,1) = (P2_31*p2_x + P2_32*p2_y + P2_33);;
-
-            // Compute the closest points on the two rays
-            cv::Mat s = (-(D.t()*D)).inv()*(D.t()*(O2-O1));
-            const float& s1 = s.at<float>(0,0);
-            const float& s2 = s.at<float>(0,1);
-
-            // Check if one of the closest is behind the camera 
-            if(s1<0 || s2<0) {
-
-                // It is invalid: an invalid point is assumed at position (0,0,0)
-                // TODO: this assumption can be avoided
-                triangulated_points.emplace_back(cv::Point3f(0,0,0));
-
-                // Do not count it as good
+            // Triangulate with the linear method
+            cv::Mat p3D;
+            if(!triangulate_point(p1_x, p1_y, p2_x, p2_y, P1, P2, p3D)) {
                 continue;
             }
-            
-            // Compute the 3D point as the middlepoint between the two closest points
-            // on the rays (-D1 to re-do the minus computed before)
-            triangulated_points.emplace_back( 
-                cv::Point3f(0.5*((-D.at<float>(0,0)*s1+O1_x) + (D.at<float>(0,1)*s2+O2_x)), \
-                            0.5*((-D.at<float>(1,0)*s1+O1_y) + (D.at<float>(1,1)*s2+O2_y)), \
-                            0.5*((-D.at<float>(2,0)*s1+O1_z) + (D.at<float>(2,1)*s2+O2_z))) 
-            );
+            const float& p3D_x = p3D.at<float>(0);
+            const float& p3D_y = p3D.at<float>(1);
+            const float& p3D_z = p3D.at<float>(2);
+
+            // Check that the point is in front of both cameras
+            const float& p3D_x_cam2 = pose2.at<float>(2,0)*p3D_x + \
+                                        pose2.at<float>(2,1)*p3D_y + \
+                                        pose2.at<float>(2,2)*p3D_z + \
+                                        pose2.at<float>(2,3);
+            if(p3D_z<=0 || p3D_x_cam2<=0) {
+                continue;                
+            }     
+
+            // It passes all the checks, so it is valid and can be saved
+            triangulated_points.back().x = p3D_x;
+            triangulated_points.back().y = p3D_y;
+            triangulated_points.back().z = p3D_z;
 
             // Count it as good
             ++n_triangulated_points;
-        
+
         }
-
-        triangulated_points.shrink_to_fit();
-
-        return n_triangulated_points;
-    }
-
-
-
-    /*
-    * TODO: write a comment
-    */
-    unsigned int linear_triangulation(const std::vector<cv::KeyPoint>& p_img1, \
-                                    const std::vector<cv::KeyPoint>& p_img2, \
-                                    const std::vector<cv::DMatch>& matches, \
-                                    const std::vector<unsigned int>& idxs, \
-                                    const cv::Mat& pose1, const cv::Mat& pose2, \
-                                    const cv::Mat& K, \
-                                    std::vector<cv::Point3f>& triangulated_points) {
-        
-        // Initialization
-        const unsigned int n_points = idxs.size();
-        unsigned int n_triangulated_points = 0;
-        triangulated_points.reserve(n_points);
-
-        // Compute the inverse of the camera matrix
-        // TODO: this computation can be avoided to be done each time
-        const cv::Mat inv_K = K.inv();
-
-        // Compute the projection matrix for camera 1 
-        cv::Mat P1(3,4,CV_32F, cv::Scalar(0));
-        K.copyTo(P1.rowRange(0,3).colRange(0,3));
-
-        // Compute the projection matrix for camera 2 (with references)
-        const cv::Mat R = pose2.rowRange(0,3).colRange(0,3);
-        const cv::Mat t = pose2.rowRange(0,3).col(3);
-        cv::Mat P2(3,4,CV_32F);
-        R.copyTo(P2.rowRange(0,3).colRange(0,3));
-        t.copyTo(P2.rowRange(0,3).col(3));
-        P2 = K*P2;
-        
-        // Triangulate each couple of points
-        for(unsigned int i=0; i<n_points; ++i) {
-
-            // Take references to the current couple of points
-            const float& p1_x = p_img1[matches[idxs[i]].queryIdx].pt.x;
-            const float& p1_y = p_img1[matches[idxs[i]].queryIdx].pt.y;
-            const float& p2_x = p_img2[matches[idxs[i]].trainIdx].pt.x;
-            const float& p2_y = p_img2[matches[idxs[i]].trainIdx].pt.y;
-
-            // Ensemble the A matrix
-            cv::Mat A(4,4,CV_32F);
-            A.row(0) = p1_x*P1.row(2)-P1.row(0);
-            A.row(1) = p1_y*P1.row(2)-P1.row(1);
-            A.row(2) = p2_x*P2.row(2)-P2.row(0);
-            A.row(3) = p2_y*P2.row(2)-P2.row(1);
-
-            // Triangulate with linear method
-            cv::Mat u,w,vt;
-            cv::SVD::compute(A,w,u,vt,cv::SVD::MODIFY_A| cv::SVD::FULL_UV);
-            cv::Mat x3D = vt.row(3).t();
-            x3D = x3D.rowRange(0,3)/x3D.at<float>(3);
-
-            cv::Mat p3dC2 = R*x3D+t;
-
-            // Check if the triangulated point is valid
-            if(!isfinite(x3D.at<float>(0)) || \
-                !isfinite(x3D.at<float>(1)) || \
-                !isfinite(x3D.at<float>(2)) || \
-                x3D.at<float>(2)<=0 || \
-                p3dC2.at<float>(2)<=0) {
-
-                // It is invalid: an invalid point is assumed at position (0,0,0)
-                // TODO: this assumption can be avoided
-                triangulated_points.emplace_back(cv::Point3f(0,0,0));
-
-                // Do not count it as good
-                continue;
-            }
-            
-            // Compute the 3D point as the middlepoint between the two closest points
-            // on the rays (-D1 to re-do the minus computed before)
-            triangulated_points.emplace_back( 
-                cv::Point3f(x3D.at<float>(0),x3D.at<float>(1),x3D.at<float>(2)) 
-            );
-
-            // Count it as good
-            ++n_triangulated_points;
-        
-        }
-
         triangulated_points.shrink_to_fit();
 
         return n_triangulated_points;
@@ -556,6 +483,38 @@ namespace SLucAM {
             undistorted_keypoints.emplace_back(undistorted_point);
         }
     }
+
+
+
+    /*
+    * This function, given a set of points in world coordinates and a pose, returns
+    * the median distance (along the z axis) of such points w.r.t. the given pose.
+    */ 
+    float compute_median_distance_cam_points(const std::vector<cv::Point3f>& points, \
+                                            const cv::Mat& pose) {
+        
+        // Initialization
+        const unsigned int n_points = points.size();
+        std::vector<float> distances;
+        const float& R31 = pose.at<float>(2,0);
+        const float& R32 = pose.at<float>(2,1);
+        const float& R33 = pose.at<float>(2,2);
+        const float& tz = pose.at<float>(2,3);
+
+        // Compute distance of each point
+        distances.reserve(n_points);
+        for(unsigned int i=0; i<n_points; ++i) {
+            const cv::Point3f& current_point = points[i];
+            distances.emplace_back(\
+                R31*current_point.x + R32*current_point.y + R33*current_point.z + tz \
+            );
+        }
+        distances.shrink_to_fit();
+
+        // Compute the median
+        std::sort(distances.begin(), distances.end());
+        return distances[(distances.size()-1)/2];
+    }
     
 } // namespace SLucAM
 
@@ -732,32 +691,36 @@ namespace SLucAM {
         unsigned int n_points = idxs.size();
 
         // Ensemble the A matrix for equations
-        cv::Mat A = cv::Mat::ones(n_points,9,CV_32F);
+        Eigen::MatrixXf A(n_points, 9);
         for(unsigned int i = 0; i<n_points; ++i) {
             const float& p1_x = p_img1[matches[idxs[i]].queryIdx].pt.x;
             const float& p1_y = p_img1[matches[idxs[i]].queryIdx].pt.y;
             const float& p2_x = p_img2[matches[idxs[i]].trainIdx].pt.x;
             const float& p2_y = p_img2[matches[idxs[i]].trainIdx].pt.y;
-            A.at<float>(i,0) = p1_x * p2_x;
-            A.at<float>(i,1) = p1_y * p2_x;
-            A.at<float>(i,2) = p2_x;
-            A.at<float>(i,3) = p1_x * p2_y;
-            A.at<float>(i,4) = p1_y * p2_y;
-            A.at<float>(i,5) = p2_y;
-            A.at<float>(i,6) = p1_x;
-            A.at<float>(i,7) = p1_y;
+            A(i,0) = p1_x * p2_x;
+            A(i,1) = p1_y * p2_x;
+            A(i,2) = p2_x;
+            A(i,3) = p1_x * p2_y;
+            A(i,4) = p1_y * p2_y;
+            A(i,5) = p2_y;
+            A(i,6) = p1_x;
+            A(i,7) = p1_y;
+            A(i,8) = 1;
         }
 
         // Compute the linear least square solution
-        cv::Mat u,w,vt;
-        cv::SVDecomp(A,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
-        cv::Mat unconstrained_F = vt.row(8).reshape(0, 3);
+        Eigen::JacobiSVD<Eigen::MatrixXf> svd_A(A, Eigen::ComputeFullU | Eigen::ComputeFullV);
+        Eigen::Matrix<float,3,3,Eigen::RowMajor> unconstrained_F(svd_A.matrixV().col(8).data());
 
         // Constrain F making the rank 2 by zeroing the last
         // singular value
-        cv::SVDecomp(unconstrained_F,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
-        w.at<float>(2)=0;
-        F = u*cv::Mat::diag(w)*vt;
+        Eigen::JacobiSVD<Eigen::Matrix3f> svd_F(unconstrained_F, Eigen::ComputeFullU | Eigen::ComputeFullV);
+        Eigen::Vector3f w = svd_F.singularValues();
+        w(2) = 0;
+        Eigen::Matrix3f F_eigen = svd_F.matrixU() * Eigen::DiagonalMatrix<float,3>(w) * svd_F.matrixV().transpose();
+
+        // Compute the OpenCV version of F
+        cv::eigen2cv(F_eigen, F);
     }
 
 
