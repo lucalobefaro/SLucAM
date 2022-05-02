@@ -247,6 +247,10 @@ namespace SLucAM {
         unsigned int vertex_id = 0;
         const unsigned int n_keyframes = this->_keyframes.size();
         const unsigned int n_landmarks = this->_landmarks.size();
+        const float& fx = this->_K.at<float>(0,0);
+        const float& fy = this->_K.at<float>(1,1);
+        const float& cx = this->_K.at<float>(0,2);
+        const float& cy = this->_K.at<float>(1,2);
 
         // Create optimizer
         g2o::SparseOptimizer optimizer;
@@ -255,15 +259,7 @@ namespace SLucAM {
         g2o::OptimizationAlgorithmLevenberg* solver =
             new g2o::OptimizationAlgorithmLevenberg(
                 g2o::make_unique<g2o::BlockSolver_6_3>(std::move(linearSolver)));
-        optimizer.setAlgorithm(solver);
-
-        // Set camera parameters
-        double focal_length = this->_K.at<float>(0,0);
-        Eigen::Vector2d principal_point(this->_K.at<float>(0,2), this->_K.at<float>(1,2));
-        g2o::CameraParameters* cam_params = \
-                new g2o::CameraParameters(focal_length, principal_point, 0.);
-        cam_params->setId(0);
-        optimizer.addParameter(cam_params);
+        optimizer.setAlgorithm(solver);        
 
         // --- Set landmarks vertices ---
         for(unsigned int i=0; i<n_landmarks; ++i) {
@@ -318,15 +314,20 @@ namespace SLucAM {
                 const cv::KeyPoint& z = current_meas.getPoints()[point_2d_idx];
 
                 // Create the edge
-                g2o::EdgeProjectXYZ2UV* e = new g2o::EdgeProjectXYZ2UV();
+                g2o::EdgeSE3ProjectXYZ* e = new g2o::EdgeSE3ProjectXYZ();
                 e->setVertex(0, \
                         dynamic_cast<g2o::VertexPointXYZ*>(optimizer.vertex(landmark_idx)) );
                 e->setVertex(1, \
                         dynamic_cast<g2o::OptimizableGraph::Vertex*>(vk));
                 e->setMeasurement(point_2d_to_vector_2d(z));
                 e->information() = Eigen::Matrix2d::Identity();
-                e->setRobustKernel(new g2o::RobustKernelHuber);
-                e->setParameterId(0, 0);
+                g2o::RobustKernelHuber* robust_kernel = new g2o::RobustKernelHuber;
+                e->setRobustKernel(robust_kernel);
+                robust_kernel->setDelta(sqrt(5.99));
+                e->fx = fx; // Camera parameters
+                e->fy = fy;
+                e->cx = cx;
+                e->cy = cy;
                 optimizer.addEdge(e);
 
             }
@@ -456,7 +457,7 @@ namespace SLucAM {
             points_associations.reserve(points_associations.size()+n_matches);
             for(unsigned int i=0; i<n_matches; ++i) {
 
-                // Get the idx of the landmark for this association (if not we have -1)
+                // Get the idx of the landmark for this association (if not we'll have -1)
                 current_3d_point_idx = \
                     current_keyframe.point2Landmark(matches[i].queryIdx);
                 
@@ -499,14 +500,14 @@ namespace SLucAM {
                                                         inliers_threshold_POSIT);
 
         if(verbose) {
-            std::cout << n_inliers << " inliers, ";
+            std::cout << n_inliers << " inliers that will be added to meas2";
         }
 
         // Check if we have at least 3 inliers (the minimal set of points
         // to have a "good" constrained problem)
         if(n_inliers < 3) {
             if(verbose) {
-                std::cout << "too few inliers..." << std::endl;
+                std::cout << ", too few inliers..." << std::endl;
             }
             return false;
         }
@@ -544,7 +545,7 @@ namespace SLucAM {
         
         // Initialization
         const unsigned int& n_keyframes = keyframes.size()-1;
-        const float matching_distance_threshold = 10;
+        const float matching_distance_threshold = 13;
 
         // Adjust the window size according to the number of keyframes
         // present
@@ -566,7 +567,7 @@ namespace SLucAM {
         for(unsigned int windows_idx=1; windows_idx<window+1; ++windows_idx) {
 
             if(verbose) {
-                std::cout << "\t\tWINDOW " << windows_idx << ": ";
+                std::cout << "\t\tMATCHING " << windows_idx << ": ";
             }
             
             // Take the reference to the keyframe with which triangulate
@@ -580,7 +581,7 @@ namespace SLucAM {
             const unsigned int n_matches = matches.size();
             
             if(verbose) {
-                std::cout << n_matches << " matches, ";
+                std::cout << n_matches << " matches => \t";
             }
 
             // If we have no match just ignore this measurement
@@ -593,14 +594,8 @@ namespace SLucAM {
 
             // Build a matches filter, to take into account only those
             // matched 2D points for which we don't have already a 3D point associated
-            // In the meanwhile create a vector of common landmarks ids for parallax
-            // computation
             std::vector<unsigned int> matches_filter;
-            std::vector<unsigned int> common_landmarks_ids;
             matches_filter.reserve(n_matches);
-            common_landmarks_ids.reserve(n_matches);
-            unsigned int n_added_first = 0; 
-            unsigned int n_added_second = 0;
             for(unsigned int match_idx=0; match_idx<n_matches; ++match_idx) {
                 
                 // Take references to the two points in the current match
@@ -609,89 +604,32 @@ namespace SLucAM {
                 const int p1_3dpoint_idx = current_keyframe.point2Landmark(p1);
                 const int p2_3dpoint_idx = last_keyframe.point2Landmark(p2);
 
-                // Check if we have already a 3D point associated to p1
-                if(p1_3dpoint_idx == -1) {
-
-                    // If we do not have a 3D point associated neither to p2
-                    // use this match to triangulate
-                    if(p2_3dpoint_idx == -1) {
+                // If we do not have a 3D point associated to this match
+                // use it to triangulate a new point
+                if(p1_3dpoint_idx == -1 && p2_3dpoint_idx == -1) {
                         matches_filter.emplace_back(match_idx);
-                    } else {
-                        // Otherwise, add that association to the first keyframe
-                        current_keyframe.addPointAssociation(p1, p2_3dpoint_idx);
-                        n_added_first++;
-                    }
-
-                } else {
-
-                    // If we do not have a 3D point associated to p2, add that association
-                    // for p1
-                    if(p2_3dpoint_idx == -1) {
-                        last_keyframe.addPointAssociation(p2, p1_3dpoint_idx);
-                        n_added_second++;
-                    } else {
-                        // In this case both points have already a prediction,
-                        // if it is the same, consider that prediction as 
-                        // common landmark
-                        if(p1_3dpoint_idx == p2_3dpoint_idx) {
-                            common_landmarks_ids.emplace_back(p1_3dpoint_idx);
-                        }
-                    }
-
                 }
 
             }
             matches_filter.shrink_to_fit();
-            common_landmarks_ids.shrink_to_fit();
 
-            // If we have no common points we cannot compute the parallax
-            // so we ignore this measurement
-            const unsigned int n_common_landmarks = common_landmarks_ids.size();
-            if(n_common_landmarks== 0) {
-                if(verbose) {
-                    std::cout << n_common_landmarks << " already seen, unable" << \
-                                " to compute the parallax." << std::endl;
-                }
-                continue;
-            }
-
-            // Compute the parallax
-            float parallax = computeParallax(pose1, pose2, \
-                                landmarks, common_landmarks_ids);
-        
-            if(verbose) {
-                std::cout << common_landmarks_ids.size() << " already seen " \
-                            << "(" << n_added_first << " added to meas1" \
-                            << ", " << n_added_second << " added to meas2), " \
-                            << matches_filter.size() << " new points, " \
-                            << "parallax "  << parallax << std::endl;
-            }  
-
-            // If we have enough parallax
-            if(parallax > parallax_threshold) {
-
-                // Triangulate new points
-                std::vector<cv::Point3f> triangulated_points;
-                triangulate_points(meas1.getPoints(), meas2.getPoints(), \
-                                    matches, matches_filter, \
-                                    pose1, pose2, K, \
-                                    triangulated_points);
-                            
-                // Add new triangulated points to the state
-                // (in landmarks vector and in corresponding keyframes)
-                std::vector<std::pair<unsigned int, unsigned int>> new_points_associations1;
-                std::vector<std::pair<unsigned int, unsigned int>> new_points_associations2;
-                if(verbose) {
-                    std::cout << "\t\t\t";
-                }
-                associateNewLandmarks(triangulated_points, matches, matches_filter, \
-                                    landmarks, new_points_associations1, \
-                                    new_points_associations2, true, new_landmark_threshold, \
-                                    verbose);
-                current_keyframe.addPointsAssociations(new_points_associations1);
-                last_keyframe.addPointsAssociations(new_points_associations2);
-                
-            }
+            // Triangulate new points
+            std::vector<cv::Point3f> triangulated_points;
+            triangulate_points(meas1.getPoints(), meas2.getPoints(), \
+                                matches, matches_filter, \
+                                pose1, pose2, K, \
+                                triangulated_points);
+                        
+            // Add new triangulated points to the state
+            // (in landmarks vector and in corresponding keyframes)
+            std::vector<std::pair<unsigned int, unsigned int>> new_points_associations1;
+            std::vector<std::pair<unsigned int, unsigned int>> new_points_associations2;
+            associateNewLandmarks(triangulated_points, matches, matches_filter, \
+                                landmarks, new_points_associations1, \
+                                new_points_associations2, true, new_landmark_threshold, \
+                                verbose);
+            current_keyframe.addPointsAssociations(new_points_associations1);
+            last_keyframe.addPointsAssociations(new_points_associations2);
 
         }
 
@@ -761,7 +699,7 @@ namespace SLucAM {
                 // Compute the nearest point
                 const std::pair<int, float> nearest_distance = \
                     nearest_3d_point(current_point, landmarks);
-                
+                                
                 // If the nearest point is under a threshold
                 if(nearest_distance.second < new_landmark_threshold) {
 

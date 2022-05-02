@@ -24,7 +24,7 @@ namespace SLucAM {
     * Default constructor of the Matcher class.
     */
     Matcher::Matcher() {
-        this->_bf_matcher = cv::BFMatcher(cv::NORM_HAMMING, true);
+        this->_bf_matcher = cv::BFMatcher::create(cv::NORM_HAMMING, true);
     }
 
 
@@ -44,7 +44,7 @@ namespace SLucAM {
 
         if(this->_use_default_matcher) {
             std::vector<cv::DMatch> unfiltered_matches;
-            this->_bf_matcher.match(meas1.getDescriptors(), \
+            this->_bf_matcher->match(meas1.getDescriptors(), \
                                     meas2.getDescriptors(), \
                                     unfiltered_matches);
             

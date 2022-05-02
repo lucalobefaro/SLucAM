@@ -13,7 +13,7 @@ function res = plot_poses(poses)
                 "Color", "red", "Size", 0.1);
         else
             cam = plotCamera('AbsolutePose', rigid_pose, 'Opacity', 0, ...
-                "Color", "blue", "Size", 0.05);
+                "Color", "blue", "Size", 0.03);
         end
         hold on;
 

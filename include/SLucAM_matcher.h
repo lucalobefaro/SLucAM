@@ -46,13 +46,13 @@ namespace SLucAM {
         void match_measurements(const Measurement& meas1, \
                                 const Measurement& meas2,  
                                 std::vector<cv::DMatch>& matches, \
-                                const float& match_threshold=20);
+                                const float& match_threshold=30);
     
     private:
 
         bool _use_default_matcher = true;
 
-        cv::BFMatcher _bf_matcher;
+        cv::Ptr<cv::BFMatcher> _bf_matcher;
 
         std::vector<std::vector<unsigned int>> _points_ids;
 

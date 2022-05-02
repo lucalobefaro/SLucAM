@@ -181,6 +181,21 @@ namespace SLucAM {
         unsigned int n_triangulated_points = 0;
         const cv::Mat P1 = compute_projection_matrix(pose1, K);
         const cv::Mat P2 = compute_projection_matrix(pose2, K);
+        float current_cos_parallax, imx, imy, invz;
+        cv::Mat d1, d2;
+        const float reprojection_threshold = 3.84;
+        const float& fx = K.at<float>(0,0);
+        const float& fy = K.at<float>(1,1);
+        const float& cx = K.at<float>(0,2);
+        const float& cy = K.at<float>(1,2);
+
+        // Compute the origins of the two cameras
+        const cv::Mat& R1 = pose1.rowRange(0,3).colRange(0,3);
+        const cv::Mat& R2 = pose2.rowRange(0,3).colRange(0,3);
+        const cv::Mat& t1 = pose1.rowRange(0,3).col(3);
+        const cv::Mat& t2 = pose2.rowRange(0,3).col(3);
+        const cv::Mat O1 = -R1.t()*t1;
+        const cv::Mat O2 = -R2.t()*t2;
         
         // Triangulate each couple of points
         triangulated_points.reserve(n_points);
@@ -206,14 +221,45 @@ namespace SLucAM {
             const float& p3D_y = p3D.at<float>(1);
             const float& p3D_z = p3D.at<float>(2);
 
-            // Check that the point is in front of both cameras
-            const float& p3D_x_cam2 = pose2.at<float>(2,0)*p3D_x + \
-                                        pose2.at<float>(2,1)*p3D_y + \
-                                        pose2.at<float>(2,2)*p3D_z + \
-                                        pose2.at<float>(2,3);
-            if(p3D_z<=0 || p3D_x_cam2<=0) {
-                continue;                
-            }     
+            // Check the parallax
+            d1 = p3D - O1;
+            d2 = p3D - O2;
+            current_cos_parallax = d1.dot(d2)/(cv::norm(d1)*cv::norm(d2));
+            if(current_cos_parallax<0 || current_cos_parallax>0.9999999999) {
+                continue;
+            }
+
+            // Check if the point is in front of the first camera
+            cv::Mat p3D_wrt1 = R1*p3D+t1;
+            const float& p3D_wrt1_x = p3D_wrt1.at<float>(0);
+            const float& p3D_wrt1_y = p3D_wrt1.at<float>(1);
+            const float& p3D_wrt1_z = p3D_wrt1.at<float>(2);
+            if(p3D_wrt1_z<=0)
+                continue;
+            
+            // Check if the point is in front of the second camera
+            cv::Mat p3D_wrt2 = R2*p3D+t2;
+            const float& p3D_wrt2_x = p3D_wrt2.at<float>(0);
+            const float& p3D_wrt2_y = p3D_wrt2.at<float>(1);
+            const float& p3D_wrt2_z = p3D_wrt2.at<float>(2);
+            if(p3D_wrt2_z<=0)
+                continue;  
+
+            // Check reprojection error in first image
+            invz = 1.0/p3D_wrt1_z;
+            imx = fx*p3D_wrt1_x*invz+cx;
+            imy = fy*p3D_wrt1_y*invz+cy;
+            if(((imx-p1_x)*(imx-p1_x)+(imy-p1_y)*(imy-p1_y)) > \
+                    reprojection_threshold)
+                continue;
+
+            // Check reprojection error in second image
+            invz = 1.0/p3D_wrt2_z;
+            imx = fx*p3D_wrt2_x*invz+cx;
+            imy = fy*p3D_wrt2_y*invz+cy;
+            if(((imx-p2_x)*(imx-p2_x)+(imy-p2_y)*(imy-p2_y)) > \
+                    reprojection_threshold)
+                continue;   
 
             // It passes all the checks, so it is valid and can be saved
             triangulated_points.back().x = p3D_x;
@@ -401,11 +447,11 @@ namespace SLucAM {
         float dist1, dist2;
 
         // Compute the origin of the pose 1
-        cv::Mat O1 = -pose1.rowRange(0,3).colRange(0,3).t() * \
+        const cv::Mat O1 = -pose1.rowRange(0,3).colRange(0,3).t() * \
                             pose1.rowRange(0,3).col(3);
 
         // Compute the origin of the pose2
-        cv::Mat O2 = -pose2.rowRange(0,3).colRange(0,3).t() * \
+        const cv::Mat O2 = -pose2.rowRange(0,3).colRange(0,3).t() * \
                             pose2.rowRange(0,3).col(3);
 
         // For each point
@@ -904,7 +950,7 @@ namespace SLucAM {
 
     /*
     * Function that perform, given a measurement taken from a camera,
-    * the projective ICP to get the pose of the camera w.r.t. the world
+    * the projective ICP to get the pose of the world w.r.t. the camera
     * from which such measurement are taken. There will be taken in consideration
     * only such measurements for which the pose of the landmark is already
     * triangulated (so guessed)

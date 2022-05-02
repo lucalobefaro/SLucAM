@@ -57,7 +57,7 @@ function res = plot_keyframe(folder, idx)
     %view([0 80]);
     view([0 -80]);
     %axis([-10 10 -10 10 -0.3 30])
-    axis([-3 3 -3 3 -0.5 6])
+    axis([-2 2 -2 2 -0.5 4])
     camproj('perspective');
     title("World");
     
