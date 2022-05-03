@@ -7,7 +7,7 @@ function res = plot_poses(poses)
             pose(2,1), pose(2,2), pose(2,3); ...
             pose(3,1), pose(3,2), pose(3,3)];
         t = [pose(1,4) pose(2,4) pose(3,4)];
-        rigid_pose = rigid3d(single(R),t);
+        rigid_pose = rigid3d(single(R'),t);
         if i == size(poses,3)
             cam = plotCamera('AbsolutePose', rigid_pose, 'Opacity', 0, ...
                 "Color", "red", "Size", 0.1);

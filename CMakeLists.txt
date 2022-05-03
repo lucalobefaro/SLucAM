@@ -24,6 +24,10 @@ list(APPEND G2O_LIBS
     ${PROJECT_SOURCE_DIR}/external/g2o/lib/libg2o_solver_dense.so)
 include_directories(${PROJECT_SOURCE_DIR}/external/g2o)
 
+### ANMS ###
+include_directories(${PROJECT_SOURCE_DIR}/external/ANMS)
+set(ANMS_INCLUDE_PATH ${PROJECT_SOURCE_DIR}/external/ANMS)
+
 # Where to put binary and library files
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)

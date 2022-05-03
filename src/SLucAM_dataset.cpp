@@ -137,7 +137,7 @@ namespace SLucAM {
 namespace SLucAM {
 
     bool load_TUM_dataset(const std::string& dataset_folder, State& state, \
-                            const cv::Ptr<cv::Feature2D>& detector, \
+                            FeatureExtractor& feature_extractor, \
                             const bool verbose) {
 
         // Initialization
@@ -181,8 +181,7 @@ namespace SLucAM {
             // Detect keypoints
             std::vector<cv::KeyPoint> points;
             cv::Mat descriptors;
-            detector->detectAndCompute(current_img, cv::Mat(), \
-                                            points, descriptors);
+            feature_extractor.extract_features(current_img, points, descriptors);
             
             // Undistort keypoints
             std::vector<cv::KeyPoint> undistorted_points;

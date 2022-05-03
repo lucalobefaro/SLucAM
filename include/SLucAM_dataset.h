@@ -15,6 +15,7 @@
 #include <string>
 #include <opencv2/features2d.hpp>
 #include <SLucAM_state.h>
+#include <SLucAM_image.h>
 
 
 
@@ -36,7 +37,7 @@ namespace SLucAM {
 // -----------------------------------------------------------------------------
 namespace SLucAM {
     bool load_TUM_dataset(const std::string& dataset_folder, State& state, \
-                            const cv::Ptr<cv::Feature2D>& detector, \
+                            FeatureExtractor& feature_extractor, \
                             const bool verbose=false);
     bool load_TUM_camera_matrix(const std::string& filename, cv::Mat& K, \
                                 cv::Mat& distorsion_coefficients);

@@ -17,13 +17,54 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/core/cvstd.hpp>
 #include <opencv2/features2d.hpp>
+#include <opencv2/xfeatures2d.hpp>
 #include <SLucAM_measurement.h>
 
 
 
-//
+// -----------------------------------------------------------------------------
+// Feature Extractor class
+// -----------------------------------------------------------------------------
+namespace SLucAM {
+
+    class FeatureExtractor {
+
+    public:
+
+        FeatureExtractor(unsigned int fast_threshold=7, \
+                        unsigned int ANMS_points=2000, \
+                        float tolerance=0.1);
+
+        void extract_features(const cv::Mat& img, \
+                                std::vector<cv::KeyPoint>& keypoints, \
+                                cv::Mat& descriptors);
+
+    private:
+
+        // FAST features detector
+        cv::Ptr<cv::FastFeatureDetector> _detector;
+
+        // Extractor of FAST descriptors
+        cv::Ptr<cv::xfeatures2d::BriefDescriptorExtractor> _extractor;
+
+        // Fast threshold
+        unsigned int _fast_threshold;
+
+        // Number of points to mantain with ANMS
+        unsigned int _ANMS_points;
+
+        // Tolerance of the number of return points
+        float _tolerance;
+
+    };
+
+} // namespace SLucAM
+
+
+
+// -----------------------------------------------------------------------------
 // Loading and saving utilities
-//
+// -----------------------------------------------------------------------------
 namespace SLucAM {
     bool load_image(const std::string& filename, cv::Mat& img);
 } // namespace SLucAM

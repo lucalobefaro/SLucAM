@@ -1,4 +1,4 @@
-%
+%{
 % First camera
 R1 = eye(3);
 t1 = [0 0 0];
@@ -34,7 +34,7 @@ xlabel("x"); ylabel("y"); zlabel("z");
 view([0 -80]);
 camproj('perspective');
 waitforbuttonpress;
-%
+%}
 
 
 
@@ -75,3 +75,25 @@ view([0 -80]);
 camproj('perspective');
 waitforbuttonpress;
 %}
+
+
+
+
+
+
+
+
+
+theta = 10;
+%rot = [ cosd(theta) sind(theta) 0; ...
+%       -sind(theta) cosd(theta) 0; ...
+%       0 0 1];
+rot = rotz(theta)
+trans = [2 3 4];
+tform = rigid3d(rot,trans);
+plotCamera('AbsolutePose', tform, 'Opacity', 0, ...
+                "Color", "red", "Size", 0.1);
+xlabel("x"); ylabel("y"); zlabel("z");
+view([0 -80]);
+camproj('perspective');
+waitforbuttonpress;

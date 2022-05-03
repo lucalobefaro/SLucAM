@@ -183,7 +183,7 @@ namespace SLucAM {
         const cv::Mat P2 = compute_projection_matrix(pose2, K);
         float current_cos_parallax, imx, imy, invz;
         cv::Mat d1, d2;
-        const float reprojection_threshold = 3.84;
+        const float reprojection_threshold = 2;
         const float& fx = K.at<float>(0,0);
         const float& fy = K.at<float>(1,1);
         const float& cx = K.at<float>(0,2);
@@ -559,7 +559,7 @@ namespace SLucAM {
 
         // Compute the median
         std::sort(distances.begin(), distances.end());
-        return distances[(distances.size()-1)/2];
+        return distances[(distances.size()-1)/2]/2;
     }
     
 } // namespace SLucAM
@@ -902,7 +902,7 @@ namespace SLucAM {
         const float p_camK_x = K_11*p_cam_x + K_12*p_cam_y + K_13*p_cam_z;
         const float p_camK_y = K_21*p_cam_x + K_22*p_cam_y + K_23*p_cam_z;
         const float p_camK_z = K_31*p_cam_x + K_32*p_cam_y + K_33*p_cam_z;
-        const float iz = 1/(p_camK_z);
+        const float iz = 1.0/(p_camK_z);
         const float z_hat_x = p_camK_x*iz;
         const float z_hat_y = p_camK_y*iz;
 
@@ -910,14 +910,14 @@ namespace SLucAM {
         // the camera frustum
         // TODO: assicurati che img_cols e img_rows siano corretti
         if (z_hat_x < 0 || 
-            z_hat_x > img_cols ||
+            z_hat_x > img_cols-1 ||
             z_hat_y < 0 || 
-            z_hat_y > img_rows)
+            z_hat_y > img_rows-1)
             return false;
                 
         // Compute the error
-        error.at<float>(0,0) = z_hat_x - measured_point.pt.x;
-        error.at<float>(1,0) = z_hat_y - measured_point.pt.y;
+        error.at<float>(0) = z_hat_x - measured_point.pt.x;
+        error.at<float>(1) = z_hat_y - measured_point.pt.y;
 
         // Compute the Jacobian
         const float iz2 = iz*iz;
@@ -1023,8 +1023,8 @@ namespace SLucAM {
                     
 
                 // Compute chi error
-                const float& e_1 = error.at<float>(0,0);
-                const float& e_2 = error.at<float>(1,0);
+                const float& e_1 = error.at<float>(0);
+                const float& e_2 = error.at<float>(1);
                 current_chi = (e_1*e_1) + (e_2*e_2);
 
                 // Deal with outliers

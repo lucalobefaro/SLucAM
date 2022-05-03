@@ -32,5 +32,5 @@ disp("DONE!");
 
 %
 f = figure('visible', 'on');
-plot_keyframe(folder, 15);
+plot_keyframe(folder, 1);
 %

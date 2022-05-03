@@ -7,7 +7,11 @@ SLucAM_initialization.cpp
 SLucAM_matcher.cpp
 SLucAM_measurement.cpp
 SLucAM_state.cpp
-SLucAM_visualization.cpp)
+SLucAM_visualization.cpp
+${ANMS_INCLUDE_PATH}/nanoflann.hpp
+${ANMS_INCLUDE_PATH}/range-tree/lrtypes.h
+${ANMS_INCLUDE_PATH}/range-tree/ranget.h
+${ANMS_INCLUDE_PATH}/anms.h)
 
 
 ### EXECUTABLE ###

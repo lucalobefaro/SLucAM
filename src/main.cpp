@@ -39,14 +39,14 @@ int main() {
 
     const unsigned int how_many_meas_optimization = 10;
 
-    const unsigned int kernel_threshold_POSIT = 20;
-    const float inliers_threshold_POSIT = 80;
+    const unsigned int kernel_threshold_POSIT = 1000;   // 1000 => 33 pixels (?)
+    const float inliers_threshold_POSIT = kernel_threshold_POSIT;
 
     const unsigned int n_iters_total_BA = 20;
     
     const unsigned int local_map_size = 6;
     const float parallax_threshold = 1.0;
-    const float new_landmark_threshold = 0.03;
+    const float new_landmark_threshold = 0.05;
     
     unsigned int step = 0;
     std::vector<std::vector<unsigned int>> associations;
@@ -56,13 +56,13 @@ int main() {
     // -----------------------------------------------------------------------------
     // Load Dataset
     // -----------------------------------------------------------------------------
-    cv::Ptr<cv::Feature2D> orb_detector = cv::ORB::create(n_orb_features);
+    SLucAM::FeatureExtractor feature_extractor = SLucAM::FeatureExtractor();
     cout << endl << "--- LOADING THE DATASET ---" << endl;
     bool loaded;
     if(synthetic)
         loaded = SLucAM::load_synthetic_dataset(dataset_folder, state, associations);
     else 
-        loaded = SLucAM::load_TUM_dataset(dataset_folder, state, orb_detector, verbose);
+        loaded = SLucAM::load_TUM_dataset(dataset_folder, state, feature_extractor, verbose);
     if(!loaded) {
         cout << "ERROR: unable to load the specified dataset" << endl;
         return 1;
@@ -118,7 +118,7 @@ int main() {
             break;
         }
         n_integrated++;
-        if(n_integrated == 15) {
+        if(n_integrated == 15 || n_integrated == 80) {
             state.performTotalBA(20, verbose);
         }
         if(save_exploration) {
@@ -140,7 +140,7 @@ int main() {
 
 
 
-    // -----------------------------------------------------------------------------
+    /* -----------------------------------------------------------------------------
     // TEST
     // -----------------------------------------------------------------------------
     if(synthetic && verbose) {
@@ -163,6 +163,6 @@ int main() {
                 state.getLandmarks()[i].z << " " << endl;
         }
     }
-   
+    */
     return 0;
 }
