@@ -39,14 +39,14 @@ int main() {
 
     const unsigned int how_many_meas_optimization = 10;
 
-    const unsigned int kernel_threshold_POSIT = 1000;   // 1000 => 33 pixels (?)
+    const unsigned int kernel_threshold_POSIT = 900;   // 1000 => 33 pixels (?)
     const float inliers_threshold_POSIT = kernel_threshold_POSIT;
 
     const unsigned int n_iters_total_BA = 20;
     
     const unsigned int local_map_size = 6;
     const float parallax_threshold = 1.0;
-    const float new_landmark_threshold = 0.05;
+    const float new_landmark_threshold = 0.08;
     
     unsigned int step = 0;
     std::vector<std::vector<unsigned int>> associations;
@@ -118,7 +118,7 @@ int main() {
             break;
         }
         n_integrated++;
-        if(n_integrated == 15 || n_integrated == 80) {
+        if(n_integrated == 15) {
             state.performTotalBA(20, verbose);
         }
         if(save_exploration) {

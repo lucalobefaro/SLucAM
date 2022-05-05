@@ -31,7 +31,8 @@ namespace SLucAM {
 
     public:
 
-        FeatureExtractor(unsigned int fast_threshold=7, \
+        FeatureExtractor(bool ANMS=true, \
+                        unsigned int fast_threshold=7, \
                         unsigned int ANMS_points=2000, \
                         float tolerance=0.1);
 
@@ -40,6 +41,9 @@ namespace SLucAM {
                                 cv::Mat& descriptors);
 
     private:
+
+        // ORB feature extractor
+        cv::Ptr<cv::ORB> _orb_extractor;
 
         // FAST features detector
         cv::Ptr<cv::FastFeatureDetector> _detector;
@@ -55,6 +59,9 @@ namespace SLucAM {
 
         // Tolerance of the number of return points
         float _tolerance;
+
+        // Flag if to use ANMS (true) or ORB (false) for feature extraction
+        bool _ANMS;
 
     };
 

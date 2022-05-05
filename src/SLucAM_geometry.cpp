@@ -225,7 +225,7 @@ namespace SLucAM {
             d1 = p3D - O1;
             d2 = p3D - O2;
             current_cos_parallax = d1.dot(d2)/(cv::norm(d1)*cv::norm(d2));
-            if(current_cos_parallax<0 || current_cos_parallax>0.9999999999) {
+            if(current_cos_parallax<0 || current_cos_parallax>0.99998) {
                 continue;
             }
 

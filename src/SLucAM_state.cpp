@@ -545,7 +545,7 @@ namespace SLucAM {
         
         // Initialization
         const unsigned int& n_keyframes = keyframes.size()-1;
-        const float matching_distance_threshold = 13;
+        const float matching_distance_threshold = 8;   // 8 for ANMS, 12 for ORB
 
         // Adjust the window size according to the number of keyframes
         // present

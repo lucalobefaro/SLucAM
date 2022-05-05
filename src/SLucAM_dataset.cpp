@@ -166,7 +166,7 @@ namespace SLucAM {
         measurements.reserve(798);
         while(std::getline(imgs_names_file, current_line)) {
 
-            if(i==200) break;
+            if(i==500) break;
             
             // Get the current filename
             std::stringstream ss_current_line_csv_file(current_line);
