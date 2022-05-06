@@ -4,6 +4,8 @@ SLucAM_dataset.cpp
 SLucAM_geometry.cpp
 SLucAM_image.cpp
 SLucAM_initialization.cpp
+SLucAM_keypoint.cpp
+SLucAM_keyframe.cpp
 SLucAM_matcher.cpp
 SLucAM_measurement.cpp
 SLucAM_state.cpp

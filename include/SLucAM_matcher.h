@@ -14,6 +14,7 @@
 // -----------------------------------------------------------------------------
 #include <opencv2/features2d.hpp>
 #include <SLucAM_measurement.h>
+#include <SLucAM_keypoint.h>
 
 
 
@@ -46,8 +47,14 @@ namespace SLucAM {
         void match_measurements(const Measurement& meas1, \
                                 const Measurement& meas2,  
                                 std::vector<cv::DMatch>& matches, \
-                                const float& match_threshold=15);   // match_threshold=15 for ANMS, 30 for ORB
-    
+                                const float& match_threshold=30);   // match_threshold=15 for ANMS, 30 for ORB
+
+        static int compute_descriptors_distance(const cv::Mat& d1, \
+                                            const cv::Mat& d2);
+        
+        static int compute_descriptors_distance(const cv::Mat& d1, \
+                                            const std::vector<cv::Mat>& d2_set);
+
     private:
 
         bool _use_default_matcher = true;

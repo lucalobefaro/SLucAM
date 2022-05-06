@@ -12,6 +12,7 @@
 #include <SLucAM_state.h>
 #include <SLucAM_dataset.h>
 #include <SLucAM_visualization.h>
+#include <SLucAM_keyframe.h>
 
 using namespace std;
 
@@ -39,7 +40,7 @@ int main() {
 
     const unsigned int how_many_meas_optimization = 10;
 
-    const unsigned int kernel_threshold_POSIT = 900;   // 1000 => 33 pixels (?)
+    const unsigned int kernel_threshold_POSIT = 1000;   // 1000 => 33 pixels (?)
     const float inliers_threshold_POSIT = kernel_threshold_POSIT;
 
     const unsigned int n_iters_total_BA = 20;
@@ -56,7 +57,7 @@ int main() {
     // -----------------------------------------------------------------------------
     // Load Dataset
     // -----------------------------------------------------------------------------
-    SLucAM::FeatureExtractor feature_extractor = SLucAM::FeatureExtractor();
+    SLucAM::FeatureExtractor feature_extractor = SLucAM::FeatureExtractor(false);
     cout << endl << "--- LOADING THE DATASET ---" << endl;
     bool loaded;
     if(synthetic)
@@ -118,8 +119,8 @@ int main() {
             break;
         }
         n_integrated++;
-        if(n_integrated == 15) {
-            state.performTotalBA(20, verbose);
+        if(n_integrated%30 == 0) {
+            state.performTotalBA(10, false);
         }
         if(save_exploration) {
             SLucAM::save_current_state(results_folder+"keyframe"+std::to_string(step)+"_", state);

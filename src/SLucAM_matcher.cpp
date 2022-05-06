@@ -101,4 +101,55 @@ namespace SLucAM {
 
     }
 
+
+
+    /*
+    * This function, given two ORB descriptors (d1, d2) computes the distance
+    * between them using the bit set count operation from:
+    * http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
+    */
+    int Matcher::compute_descriptors_distance(const cv::Mat& d1, \
+                                                const cv::Mat& d2) {
+    
+        const int *d1_ptr = d1.ptr<int32_t>();
+        const int *d2_ptr = d2.ptr<int32_t>();
+
+        int distance = 0;
+
+        for(int i=0; i<8; i++, d1_ptr++, d2_ptr++)
+        {
+            unsigned  int v = *d1_ptr ^ *d2_ptr;
+            v = v - ((v >> 1) & 0x55555555);
+            v = (v & 0x33333333) + ((v >> 2) & 0x33333333);
+            distance += (((v + (v >> 4)) & 0xF0F0F0F) * 0x1010101) >> 24;
+        }
+
+        return distance;
+
+    }
+
+
+
+    /*
+    * This function computes the distance between a single descriptor and a set of
+    * descriptors and returns the nearest distance computed.
+    */
+    int Matcher::compute_descriptors_distance(const cv::Mat& d1, \
+                                                const std::vector<cv::Mat>& d2_set) {
+    
+        // Initialization
+        unsigned int best_distance = 10000;
+        unsigned int current_distance;
+        const unsigned int n_descriptors = d2_set.size();
+
+        // Search for the best distance
+        for(unsigned int i=0; i<n_descriptors; ++i) {
+            current_distance = compute_descriptors_distance(d1, d2_set[i]);
+            if(current_distance < best_distance) 
+                best_distance = current_distance;
+        }
+
+        return best_distance;
+    }
+
 } // namespace SLucAM

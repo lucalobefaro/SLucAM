@@ -37,4 +37,13 @@ namespace SLucAM {
         Measurement::_next_id++;
     }
 
+
+
+    /*
+    * Gives a descriptor of a point, determined by its idx.
+    */
+    cv::Mat Measurement::getDescriptor(const unsigned int& idx) const {
+        return this->_descriptors.row(idx);
+    }
+
 } // namespace SLucAM

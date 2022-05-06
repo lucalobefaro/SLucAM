@@ -9,6 +9,7 @@
 #include <SLucAM_dataset.h>
 #include <SLucAM_image.h>
 #include <SLucAM_geometry.h>
+#include <SLucAM_keyframe.h>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -788,7 +789,7 @@ namespace SLucAM {
         if(!save_poses(folder, state.getPoses())) return false;
 
         // Save all landmarks
-        if(!save_landmarks(folder, state.getLandmarks())) return false;
+        if(!save_landmarks(folder, state.getKeypoints())) return false;
 
         // Save the edges last_keyframe <-> landmarks
         if(!save_edges(folder, last_keyframe)) return false;
@@ -845,11 +846,11 @@ namespace SLucAM {
     * Function that save in a file all the predicted 3D points.
     */  
     bool save_landmarks(const std::string& folder, \
-                        const std::vector<cv::Point3f>& landmarks) {
+                        const std::vector<Keypoint>& keypoints) {
         
         // Initialization
         const std::string filename = folder + "SLucAM_landmarks.dat";
-        unsigned int n_landmars = landmarks.size();
+        unsigned int n_keyopints = keypoints.size();
 
         // Open the file
         std::ofstream f;
@@ -861,8 +862,8 @@ namespace SLucAM {
         f << "x\ty\tz";
 
         // Write all the landmarks
-        for(unsigned int i=0; i<n_landmars; ++i) {
-            const cv::Point3f& l = landmarks[i];
+        for(unsigned int i=0; i<n_keyopints; ++i) {
+            const cv::Point3f& l = keypoints[i].getPosition();
             f << std::endl << l.x << "\t" << l.y << "\t" << l.z;
         }
 

@@ -16,6 +16,8 @@
 #include <opencv2/features2d.hpp>
 #include <SLucAM_state.h>
 #include <SLucAM_image.h>
+#include <SLucAM_keyframe.h>
+#include <SLucAM_keypoint.h>
 
 
 
@@ -88,7 +90,7 @@ namespace SLucAM {
     bool save_poses(const std::string& folder, \
                     const std::vector<cv::Mat>& poses);
     bool save_landmarks(const std::string& folder, \
-                        const std::vector<cv::Point3f>& landmarks);
+                        const std::vector<Keypoint>& keypoints);
     bool save_edges(const std::string& folder, \
                     const Keyframe& keyframe);
     bool save_keypoints(const std::string& folder, \

@@ -37,6 +37,8 @@ namespace SLucAM {
         const cv::Mat& getDescriptors() const \
                 {return this->_descriptors;};
 
+        cv::Mat getDescriptor(const unsigned int& idx) const;
+
         const unsigned int getId() const \
                 {return this->_meas_id;};
         

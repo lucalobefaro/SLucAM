@@ -425,6 +425,36 @@ namespace SLucAM {
 
 
     /*
+    * This function, given a point (p_x, p_y) gives a vector of points
+    * (nearest_points_ids) that filters out those points in the points vector
+    * that are around the first given point (p_x, p_y). The threshold parameter
+    * determine how near we want the points.
+    */
+    unsigned int nearest_2d_points(const float& p_x, const float& p_y, \
+                            const std::vector<cv::KeyPoint>& points, \
+                            std::vector<unsigned int>& nearest_points_ids, \
+                            const float threshold) {
+        
+        // Initialization
+        const unsigned int n_points = points.size();
+        nearest_points_ids.clear();
+
+        // Search for neighbors
+        nearest_points_ids.reserve(n_points);
+        for(unsigned int p_idx=0; p_idx<n_points; ++p_idx) {
+            if(std::abs(p_x-points[p_idx].pt.x < threshold) && \
+                std::abs(p_y-points[p_idx].pt.y < threshold))
+                nearest_points_ids.emplace_back(p_idx);
+        }
+        nearest_points_ids.shrink_to_fit();
+
+        return nearest_points_ids.size();
+
+    }
+
+
+
+    /*
     * Given two poses and a list of 3D points seen in common between them, this function 
     * computes the parallax between the two poses.
     * Inputs:
@@ -533,10 +563,10 @@ namespace SLucAM {
 
 
     /*
-    * This function, given a set of points in world coordinates and a pose, returns
+    * This function, given a set of keypoints and a pose, returns
     * the median distance (along the z axis) of such points w.r.t. the given pose.
     */ 
-    float compute_median_distance_cam_points(const std::vector<cv::Point3f>& points, \
+    float compute_median_distance_cam_points(const std::vector<Keypoint>& points, \
                                             const cv::Mat& pose) {
         
         // Initialization
@@ -550,7 +580,7 @@ namespace SLucAM {
         // Compute distance of each point
         distances.reserve(n_points);
         for(unsigned int i=0; i<n_points; ++i) {
-            const cv::Point3f& current_point = points[i];
+            const cv::Point3f& current_point = points[i].getPosition();
             distances.emplace_back(\
                 R31*current_point.x + R32*current_point.y + R33*current_point.z + tz \
             );
@@ -975,7 +1005,7 @@ namespace SLucAM {
                                 std::vector<bool>& points_associations_filter, \
                                 const std::vector<std::pair<unsigned int, \
                                         unsigned int>>& points_associations, \
-                                const std::vector<cv::Point3f>& landmarks, \
+                                const std::vector<Keypoint>& keypoints, \
                                 const cv::Mat& K, \
                                 const float& kernel_threshold, \
                                 const float& threshold_to_ignore, \
@@ -1011,7 +1041,7 @@ namespace SLucAM {
 
                 // Take the guessed landmark position of the current observation
                 const cv::Point3f& guessed_landmark = \
-                        landmarks[points_associations[obs_idx].second];
+                        keypoints[points_associations[obs_idx].second].getPosition();
                 
                 // Compute error and jacobian
                 if(!error_and_jacobian_Posit(guessed_pose, guessed_landmark, \

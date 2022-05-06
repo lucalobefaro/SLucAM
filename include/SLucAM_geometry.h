@@ -13,6 +13,7 @@
 // -----------------------------------------------------------------------------
 #include <opencv2/features2d.hpp>
 #include <SLucAM_state.h>
+#include <SLucAM_keypoint.h>
 #include <g2o/types/sba/types_six_dof_expmap.h>
 
 
@@ -41,6 +42,10 @@ namespace SLucAM {
     cv::Mat invert_transformation_matrix(const cv::Mat& T_matrix);
     std::pair<int, float> nearest_3d_point(\
             const cv::Point3f& p, const std::vector<cv::Point3f>& c);
+    unsigned int nearest_2d_points(const float& p_x, const float& p_y, \
+                            const std::vector<cv::KeyPoint>& points, \
+                            std::vector<unsigned int>& nearest_points_ids, \
+                            const float threshold=100);
     float computeParallax(const cv::Mat& pose1, const cv::Mat& pose2, \
                             const std::vector<cv::Point3f>& landmarks, \
                             const std::vector<unsigned int>& common_landmarks_ids);
@@ -48,7 +53,7 @@ namespace SLucAM {
                             std::vector<cv::KeyPoint>& undistorted_keypoints, \
                             const cv::Mat& distorsion_coefficients, \
                             const cv::Mat& K);
-    float compute_median_distance_cam_points(const std::vector<cv::Point3f>& points, \
+    float compute_median_distance_cam_points(const std::vector<Keypoint>& points, \
                                             const cv::Mat& pose);
 } // namespace SLucAM
 
@@ -96,7 +101,7 @@ namespace SLucAM {
                                 std::vector<bool>& points_associations_filter, \
                                 const std::vector<std::pair<unsigned int, \
                                         unsigned int>>& points_associations, \
-                                const std::vector<cv::Point3f>& landmarks, \
+                                const std::vector<Keypoint>& keypoints, \
                                 const cv::Mat& K, \
                                 const float& kernel_threshold, \
                                 const float& threshold_to_ignore, \
