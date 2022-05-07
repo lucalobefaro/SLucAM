@@ -394,11 +394,9 @@ namespace SLucAM {
 
         // Add the association 3D keypoints -> 2D points and update the keypoint
         // descriptor
-        for(unsigned int i=0; i<n_associations; ++i) {
-            Keypoint& kp =  this->_keypoints[points_associations[i].second];
-            kp.addObserver(this->_keyframes.size()-1, points_associations[i].first);
-            kp.updateDescriptor(this->_keyframes, this->_measurements);
-        }
+        addAssociationKeypoints(this->_keypoints, points_associations, \
+                                this->_keyframes.size()-1, this->_keyframes, \
+                                this->_measurements);
 
         if(verbose) {
             std::cout << "NEW KEYFRAME ADDED (meas:" << meas_idx << \
@@ -472,9 +470,8 @@ namespace SLucAM {
             std::cout << n_inliers << " inliers that will be added to meas2";
         }
 
-        // Check if we have at least 3 inliers (the minimal set of points
-        // to have a "good" constrained problem)
-        if(n_inliers < 3) {
+        // Check if we have at least 20 inliers
+        if(n_inliers < 20) {
             if(verbose) {
                 std::cout << ", too few inliers..." << std::endl;
             }
@@ -524,7 +521,8 @@ namespace SLucAM {
         }
 
         // Take the reference to the last integrated keyframe
-        Keyframe& last_keyframe = keyframes.back();
+        const unsigned int keyframe2_idx = keyframes.size()-1;
+        Keyframe& last_keyframe = keyframes[keyframe2_idx];
         const Measurement& meas2 = measurements[last_keyframe.getMeasIdx()];
         const cv::Mat& pose2 = poses[last_keyframe.getPoseIdx()];
 
@@ -540,7 +538,8 @@ namespace SLucAM {
             }
             
             // Take the reference to the keyframe with which triangulate
-            Keyframe& current_keyframe = keyframes[n_keyframes-windows_idx];
+            const unsigned int keyframe1_idx = n_keyframes-windows_idx;
+            Keyframe& current_keyframe = keyframes[keyframe1_idx];
             const Measurement& meas1 = measurements[current_keyframe.getMeasIdx()];
             const cv::Mat& pose1 = poses[current_keyframe.getPoseIdx()];
 
@@ -590,15 +589,48 @@ namespace SLucAM {
                                 triangulated_points);
                         
             // Add new triangulated points to the state
-            // (in landmarks vector and in corresponding keyframes)
+            // (in keypoints vector and in corresponding keyframes)
             std::vector<std::pair<unsigned int, unsigned int>> new_points_associations1;
             std::vector<std::pair<unsigned int, unsigned int>> new_points_associations2;
             associateNewKeypoints(triangulated_points, matches, matches_filter, \
                                 keypoints, new_points_associations1, \
                                 new_points_associations2, verbose);
+            addAssociationKeypoints(keypoints, new_points_associations1, \
+                                        keyframe1_idx, keyframes, measurements);
+            addAssociationKeypoints(keypoints, new_points_associations2, \
+                                        keyframe2_idx, keyframes, measurements);
             current_keyframe.addPointsAssociations(new_points_associations1);
             last_keyframe.addPointsAssociations(new_points_associations2);
 
+
+        }
+
+    }
+
+
+
+    /*
+    * This function, given a set of keypoints, a set of associations 2D point -> 3D point
+    * and the measure at which these associations are correlated, add the association
+    * 3D point -> 2D point inside the keypoints vector.
+    */
+    void State::addAssociationKeypoints(std::vector<Keypoint>& keypoints, \
+                                        const std::vector<std::pair<unsigned int, unsigned int>>& \
+                                                    points_associations, \
+                                        const unsigned int keyframe_idx, \
+                                        const std::vector<Keyframe>& keyframes, \
+                                        const std::vector<Measurement>& measurements) {
+        
+        // Initialization
+        const unsigned int n_associations = points_associations.size();
+
+        // Add each association
+        for(unsigned int i=0; i<n_associations; ++i) {
+            const std::pair<unsigned int, unsigned int>& current_association = \
+                    points_associations[i];
+            Keypoint& kp = keypoints[current_association.second];
+            kp.addObserver(keyframe_idx, current_association.first);
+            kp.updateDescriptor(keyframes, measurements);
         }
 
     }
@@ -724,7 +756,7 @@ namespace SLucAM {
         float kp_cam_x, kp_cam_y, kp_cam_z, kp_img_x, kp_img_y, iz;
         std::vector<unsigned int> nearest_points_ids;
         unsigned int n_nearest_points, current_distance, best_distance, best_p_idx;
-        const unsigned int distance_threshold = 100; // TODO: choose a good one
+        const unsigned int distance_threshold = 50; // TODO: choose a good one
         std::vector<bool> associated_points(n_points_2d, false);
 
         // Some reference to save time
@@ -786,7 +818,7 @@ namespace SLucAM {
 
             // Find the point that has the nearest descriptor
             // and has not an association already
-            best_distance = 10000;
+            best_distance = INT_MAX;
             for(unsigned int p_idx=0; p_idx<n_nearest_points; ++p_idx) {
                 if(!associated_points[p_idx]) {
                     current_distance = Matcher::compute_descriptors_distance(\

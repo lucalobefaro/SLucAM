@@ -43,7 +43,7 @@ namespace SLucAM {
                         this->getObserverDescriptor(keyframes, measurements, j));
             }
         }
-
+        
         // Save as representative descriptor the descriptor with the
         // lower median distance
         for(unsigned int i=0; i<n_observers; ++i){

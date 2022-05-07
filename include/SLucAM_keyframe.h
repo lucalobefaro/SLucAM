@@ -105,7 +105,7 @@ namespace SLucAM {
         unsigned int _pose_idx;
 
         // List of associations 2D point <-> 3D point (referred to the 2D points
-        // in the corresponding measurement and the 3D point in the state)
+        // in the corresponding measurement and the 3D keypoint in the state)
         std::vector<std::pair<unsigned int, unsigned int>> _points_associations;
         
         // List of keyframes that this observes

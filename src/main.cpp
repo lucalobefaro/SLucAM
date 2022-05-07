@@ -113,10 +113,8 @@ int main() {
                                     parallax_threshold, \
                                     new_landmark_threshold, \
                                     verbose)) {
-            std::cout << std::endl << \
-                    "UNABLE TO CONTINUE EXPLORATION (it needs re-initialization)" \
-                << std::endl << std::endl;
-            break;
+            std::cout << std::endl << "BAD KEYFRAME" << std::endl << std::endl;
+            continue;
         }
         n_integrated++;
         if(n_integrated%30 == 0) {

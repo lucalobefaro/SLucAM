@@ -117,6 +117,13 @@ namespace SLucAM {
                                         const float& new_landmark_threshold, \
                                         const float& parallax_threshold, \
                                         const bool verbose=false);
+        
+        static void addAssociationKeypoints(std::vector<Keypoint>& keypoints, \
+                                            const std::vector<std::pair<unsigned int, unsigned int>>& \
+                                                    points_associations, \
+                                            const unsigned int keyframe_idx, \
+                                            const std::vector<Keyframe>& keyframes, \
+                                            const std::vector<Measurement>& measurements);
 
         static void associateNewKeypoints(const std::vector<cv::Point3f>& predicted_landmarks, \
                                         const std::vector<cv::DMatch>& matches, \
