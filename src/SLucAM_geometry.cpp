@@ -591,6 +591,22 @@ namespace SLucAM {
         std::sort(distances.begin(), distances.end());
         return distances[(distances.size()-1)/2]/2;
     }
+
+
+
+    /*
+    * This function computes the distance between two poses represented
+    * by two transformation matrices.
+    */
+    float compute_poses_distance(const cv::Mat& T1, const cv::Mat& T2) {
+
+        return std::sqrt( \
+            std::pow( T1.at<float>(0,3)-T2.at<float>(0,3), 2) + \
+            std::pow( T1.at<float>(1,3)-T2.at<float>(1,3), 2) + \
+            std::pow( T1.at<float>(2,3)-T2.at<float>(2,3), 2) \
+        );
+        
+    }
     
 } // namespace SLucAM
 

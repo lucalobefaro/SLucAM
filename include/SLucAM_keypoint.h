@@ -53,6 +53,8 @@ namespace SLucAM {
             this->_observers.emplace_back(keyframe_idx, point_idx);
         }
 
+        unsigned int deleteObservers(const unsigned int& keyframe_idx);
+
         void updateDescriptor(const std::vector<Keyframe>& keyframes, \
                                 const std::vector<Measurement>& measurements);
 

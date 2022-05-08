@@ -61,6 +61,35 @@ namespace SLucAM {
     }
 
 
+    /*
+    * This function, given the idx of a keyframe, deletes from the current
+    * keypoint all the observations from such keyframe.
+    * Outputs:
+    *   number of observers deleted
+    */
+    unsigned int Keypoint::deleteObservers(const unsigned int& keyframe_idx) {
+
+        // Initialization
+        const unsigned int n_observers = this->_observers.size();
+
+        // Create a vector that will contain all the observers
+        std::vector<std::pair<unsigned int, unsigned int>> old_observers;
+        old_observers.swap(this->_observers);
+
+        // Refill the original vector by ignoring the observations made
+        // from the given keyframe
+        this->_observers.reserve(n_observers);
+        for(unsigned int i=0; i<n_observers; ++i) {
+            if(old_observers[i].first != keyframe_idx) 
+                this->_observers.emplace_back(old_observers[i]);
+        }
+        this->_observers.shrink_to_fit();
+
+        // Count how many observations we loose
+        return n_observers-this->_observers.size();
+    } 
+
+
 
     /*
     * This function, given an idx of an observer, returns the associated

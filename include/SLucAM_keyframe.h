@@ -32,6 +32,8 @@ namespace SLucAM {
     *       predicted landmark in the state
     *   - a vector that contains all the keyframe(poses) that the current Keyframe 
     *       observes
+    *   - a vector that contains all the keyframes(poses) that observes the current
+    *       keyframe
     */
     class Keyframe {
 
@@ -54,8 +56,12 @@ namespace SLucAM {
                 new_points_associations.begin(), new_points_associations.end()); 
         }
 
-        void addKeyframeAssociation(const int& pose_idx){
-            this->_keyframes_associations.emplace_back(pose_idx);
+        void addKeyframeObserved(const int& pose_idx) {
+            this->_keyframes_observed.emplace_back(pose_idx);
+        }
+
+        void addObserverKeyframe(const int& pose_idx) {
+            this->_observers_keyframes.emplace_back(pose_idx);
         }
 
         const unsigned int& getPoseIdx() const {return this->_pose_idx;}
@@ -67,14 +73,18 @@ namespace SLucAM {
             return this->_points_associations;
         }
 
-        const std::vector<unsigned int>& getKeyframesAssociations() const {
-            return this->_keyframes_associations;
+        const std::vector<unsigned int>& getKeyframesObserved() const {
+            return this->_keyframes_observed;
+        }
+
+        const std::vector<unsigned int>& getObserversKeyframes() const {
+            return this->_observers_keyframes;
         }
 
         friend std::ostream& operator<< (std::ostream& out, const Keyframe& data) {
 
             const unsigned int n_points_associations = data._points_associations.size();
-            const unsigned int n_keyframes_associations = data._keyframes_associations.size();
+            const unsigned int n_keyframes_associations = data._keyframes_observed.size();
 
             out << "MEASUREMENT IDX: " << data._meas_idx << std::endl;
             out << "POSE IDX: " << data._pose_idx << std::endl;
@@ -87,7 +97,7 @@ namespace SLucAM {
             }
             out << "OBSERVED KEYFRAMES IDS: ";
             for(unsigned int i=0; i<n_keyframes_associations; ++i) {
-                out << "[" << data._keyframes_associations[i] << "] ";
+                out << "[" << data._keyframes_observed[i] << "] ";
             }
             out << std::endl;
 
@@ -109,7 +119,10 @@ namespace SLucAM {
         std::vector<std::pair<unsigned int, unsigned int>> _points_associations;
         
         // List of keyframes that this observes
-        std::vector<unsigned int> _keyframes_associations;
+        std::vector<unsigned int> _keyframes_observed;
+
+        // List of keyframes that observes this
+        std::vector<unsigned int> _observers_keyframes;
 
     };
 

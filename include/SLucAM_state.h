@@ -70,6 +70,9 @@ namespace SLucAM {
                         std::vector<std::pair<unsigned int, unsigned int>>& _points_associations, \
                         const int& observer_keyframe_idx, const bool verbose=false);
 
+        const std::vector<unsigned int> getCommonKeypoints(const unsigned int& k1_idx, \
+                                                            const unsigned int& k2_idx);
+
         const cv::Mat& getCameraMatrix() const \
             {return this->_K;};
         

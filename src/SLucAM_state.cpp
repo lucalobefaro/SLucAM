@@ -18,6 +18,7 @@
 #include <g2o/core/optimization_algorithm_levenberg.h>
 #include <g2o/core/robust_kernel_impl.h>
 #include <iostream>
+#include <map>
 
 
 
@@ -30,7 +31,7 @@ namespace SLucAM {
     * Base constructor.
     */
     State::State() {
-        this->_next_measurement_idx=0;
+        this->_next_measurement_idx = 0;
         this->_distorsion_coefficients = cv::Mat();
     }
 
@@ -389,7 +390,8 @@ namespace SLucAM {
 
         // Add the reference to the observer (if any)
         if(observer_keyframe_idx != -1) {
-            this->_keyframes[observer_keyframe_idx].addKeyframeAssociation(this->_keyframes.size()-1);
+            this->_keyframes[observer_keyframe_idx].addKeyframeObserved(this->_keyframes.size()-1);
+            this->_keyframes[this->_keyframes.size()-1].addObserverKeyframe(observer_keyframe_idx);
         }
 
         // Add the association 3D keypoints -> 2D points and update the keypoint
@@ -403,6 +405,36 @@ namespace SLucAM {
                 ", pose:" << pose_idx << ")" << std::endl; 
         }
 
+    }
+
+
+
+    /*
+    * This function, given two keyframe ids, returns all the ids of the keypoints
+    * seen from both of them.
+    */
+    const std::vector<unsigned int> State::getCommonKeypoints(const unsigned int& k1_idx, \
+                                                                const unsigned int& k2_idx) {
+        
+        // Initialization
+        const std::vector<std::pair<unsigned int, unsigned int>>& k1_ass = \
+                    this->_keyframes[k1_idx].getPointsAssociations();
+        const std::vector<std::pair<unsigned int, unsigned int>>& k2_ass = \
+                    this->_keyframes[k2_idx].getPointsAssociations();
+        std::vector<unsigned int> commond_keypoints_ids;
+
+        // Create a "counter" for keypoints
+        std::map<unsigned int, unsigned int> counter;
+        for(auto& ass: k1_ass)
+            counter[ass.second]++;
+        for(auto& ass: k2_ass)
+            counter[ass.second]++;
+
+        // Save only keypoints seen from both
+        for(auto& el: counter)
+            if(el.second == 2)
+                commond_keypoints_ids.emplace_back(el.first);
+        
     }
 
 
@@ -756,7 +788,7 @@ namespace SLucAM {
         float kp_cam_x, kp_cam_y, kp_cam_z, kp_img_x, kp_img_y, iz;
         std::vector<unsigned int> nearest_points_ids;
         unsigned int n_nearest_points, current_distance, best_distance, best_p_idx;
-        const unsigned int distance_threshold = 50; // TODO: choose a good one
+        const unsigned int distance_threshold = 50;
         std::vector<bool> associated_points(n_points_2d, false);
 
         // Some reference to save time
