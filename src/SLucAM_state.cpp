@@ -1082,10 +1082,9 @@ namespace SLucAM {
         const unsigned int image_width = 2*K.at<float>(0,2);
         const unsigned int image_height = 2*K.at<float>(1,2);
         float kp_cam_x, kp_cam_y, kp_cam_z, kp_img_x, kp_img_y, iz;
-        std::vector<unsigned int> nearest_points_ids;
-        unsigned int n_nearest_points, current_distance, best_distance, best_p_idx;
         const unsigned int distance_threshold = 50;
-        std::vector<bool> associated_points(n_points_2d, false);
+        int current_distance, best_distance;
+        unsigned int best_row_idx;
 
         // Some reference to save time
         const float& R11 = T.at<float>(0,0);
@@ -1110,10 +1109,14 @@ namespace SLucAM {
         const float& K32 = K.at<float>(2,1);
         const float& K33 = K.at<float>(2,2);
 
-        // For each 3D point in the map
-        points_associations.reserve(n_points_2d);
+        // Build the associations matrix where a row contains all the 
+        // distances from a given 3D point to all 2D points in the measurement
+        std::vector<std::vector<int>> associations_matrix;
+        std::map<unsigned int, unsigned int> row2keypointidx;
+        unsigned int current_row = 0;
+        associations_matrix.reserve(n_points_3d);
         for(unsigned int i=0; i<n_points_3d; ++i) {
-
+            
             // Get the current keypoint
             const Keypoint& kp = keypoints[i];
             const float& kp_w_x = kp.getPosition().x;
@@ -1137,31 +1140,59 @@ namespace SLucAM {
                 kp_img_y < 0 || kp_img_y > image_height)
                 continue;
             
-            // Get all the points "around" the projected 3D point
-            n_nearest_points = nearest_2d_points(kp_img_x, kp_img_y, \
-                                                points_2d, nearest_points_ids);
-
             // Get the representaitve descriptor of the current 3D point
             const cv::Mat& point_3d_descriptor = kp.getDescriptor();
+            
+            // The current keypoint is valid and can be added to the
+            // associations matrix by building a vector of scores,
+            // one element for each 2D point in the image
+            row2keypointidx[current_row++] = i;
+            std::vector<int> current_associations;
+            current_associations.reserve(n_points_2d);
+            for(unsigned int p_idx=0; p_idx<n_points_2d; ++p_idx) {
+                current_associations.emplace_back(\
+                        Matcher::compute_descriptors_distance(\
+                                meas.getDescriptor(p_idx), point_3d_descriptor) \
+                );
+            }
+            current_associations.shrink_to_fit();
 
-            // Find the point that has the nearest descriptor
-            // and has not an association already
+            // Save it in the matrix
+            associations_matrix.emplace_back(current_associations);
+
+        }
+        associations_matrix.shrink_to_fit();
+        const unsigned int n_rows = associations_matrix.size();
+
+        // Choose, for each 2D point, the best association, avoiding
+        // duplicates
+        std::vector<bool> associated_points(n_points_3d, false);
+        points_associations.reserve(n_points_2d);
+        for(unsigned int p_2d_idx=0; p_2d_idx<n_points_2d; ++p_2d_idx) {
+            
+            // Set the current best distance to max and best_row_idx to invalid
             best_distance = INT_MAX;
-            for(unsigned int p_idx=0; p_idx<n_nearest_points; ++p_idx) {
-                if(!associated_points[p_idx]) {
-                    current_distance = Matcher::compute_descriptors_distance(\
-                                                meas.getDescriptor(p_idx), point_3d_descriptor);
-                    if(current_distance < best_distance) {
-                        best_distance = current_distance;
-                        best_p_idx = p_idx;
-                    }
+            best_row_idx = -1;
+            
+            // Search for the best 3D point
+            for(unsigned int p_3d_row_idx=0; p_3d_row_idx<n_rows; ++p_3d_row_idx) {
+                
+                // If the current 3D point is already associated, ignore it
+                if(associated_points[p_3d_row_idx])
+                    continue;
+                
+                // Get the distance from the current 3D point and save
+                // if it is the best one
+                current_distance = associations_matrix[p_3d_row_idx][p_2d_idx];
+                if(current_distance < best_distance) {
+                    best_distance = current_distance;
+                    best_row_idx = p_3d_row_idx;
                 }
             }
 
-            // If the best candidate is under a threshold, save the association
-            if(best_distance <= distance_threshold) {
-                points_associations.emplace_back(best_p_idx, i);
-                associated_points[best_p_idx] = true;
+            // If we found the best association and it is good enough, save it
+            if(best_row_idx != -1 && best_distance < distance_threshold) {
+                points_associations.emplace_back(p_2d_idx, row2keypointidx[best_row_idx]);
             }
 
         }
