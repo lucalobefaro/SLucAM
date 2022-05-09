@@ -117,8 +117,8 @@ int main() {
             continue;
         }
         n_integrated++;
-        if(n_integrated%30 == 0) {
-            state.performTotalBA(10, false);
+        if(n_integrated%10 == 0) {
+            state.performLocalBA(10);
         }
         if(save_exploration) {
             SLucAM::save_current_state(results_folder+"keyframe"+std::to_string(step)+"_", state);

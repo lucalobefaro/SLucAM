@@ -62,6 +62,8 @@ namespace SLucAM {
         
         void performTotalBA(const unsigned int& n_iters, const bool verbose=false);
 
+        void performLocalBA(const unsigned int& n_iters, const bool verbose=false);
+
         const unsigned int reaminingMeasurements() const {
             return (this->_measurements.size() - this->_next_measurement_idx);
         };
@@ -70,8 +72,14 @@ namespace SLucAM {
                         std::vector<std::pair<unsigned int, unsigned int>>& _points_associations, \
                         const int& observer_keyframe_idx, const bool verbose=false);
 
-        const std::vector<unsigned int> getCommonKeypoints(const unsigned int& k1_idx, \
-                                                            const unsigned int& k2_idx);
+        void getCommonKeypoints(const unsigned int& k1_idx, \
+                                const unsigned int& k2_idx, \
+                                std::vector<unsigned int>& common_keypoints_ids);
+
+        void getLocalMap(const unsigned int& keyframe_idx, \
+                            std::vector<unsigned int>& observed_keypoints, \
+                            std::vector<unsigned int>& near_local_keyframes, \
+                            std::vector<unsigned int>& far_local_keyframes);
 
         const cv::Mat& getCameraMatrix() const \
             {return this->_K;};

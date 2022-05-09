@@ -19,6 +19,7 @@
 #include <g2o/core/robust_kernel_impl.h>
 #include <iostream>
 #include <map>
+#include <set>
 
 
 
@@ -263,7 +264,7 @@ namespace SLucAM {
                 g2o::make_unique<g2o::BlockSolver_6_3>(std::move(linearSolver)));
         optimizer.setAlgorithm(solver);        
 
-        // --- Set landmarks vertices ---
+        // --- Set keypoints vertices ---
         for(unsigned int i=0; i<n_keypoints; ++i) {
 
             // Get the reference to the current landmark
@@ -372,6 +373,230 @@ namespace SLucAM {
 
 
     /*
+    * Simply the Local Bundle Adjustment.
+    */
+    void State::performLocalBA(const unsigned int& n_iters, const bool verbose) {
+
+        // Initialization
+        const unsigned int last_keyframe_idx = this->_keyframes.size()-1;
+        const float& fx = this->_K.at<float>(0,0);
+        const float& fy = this->_K.at<float>(1,1);
+        const float& cx = this->_K.at<float>(0,2);
+        const float& cy = this->_K.at<float>(1,2);
+        unsigned int vertex_id = 0;
+
+        // Get the local map of the last keyframe inserted in the state
+        std::vector<unsigned int> observed_keypoints, near_local_keyframes, \
+                                    far_local_keyframes;
+        this->getLocalMap(last_keyframe_idx, observed_keypoints, \
+                            near_local_keyframes, far_local_keyframes);
+        const unsigned int n_keypoints = observed_keypoints.size();
+        const unsigned int n_near_keyframes = near_local_keyframes.size();
+        const unsigned int n_far_keyframes = far_local_keyframes.size();
+
+        if(n_near_keyframes == 0)
+            return;
+
+        // Create optimizer
+        g2o::SparseOptimizer optimizer;
+        std::unique_ptr<g2o::BlockSolver_6_3::LinearSolverType> linearSolver;
+        linearSolver= g2o::make_unique<g2o::LinearSolverDense<g2o::BlockSolver_6_3::PoseMatrixType>>();
+        g2o::OptimizationAlgorithmLevenberg* solver =
+            new g2o::OptimizationAlgorithmLevenberg(
+                g2o::make_unique<g2o::BlockSolver_6_3>(std::move(linearSolver)));
+        optimizer.setAlgorithm(solver);
+
+        // Create a map that, given the idx of a keypoint, returns the associated
+        // vertex idx in the optimizer graph
+        std::map<unsigned int, unsigned int> keypoint_idx2vertex_idx;
+
+        // --- Set keypoints vertices ---
+        for(unsigned int i=0; i<n_keypoints; ++i) {
+
+            // Get the reference to the current landmark
+            const cv::Point3f& p = this->_keypoints[observed_keypoints[i]].getPosition();
+
+            // Create the new vertex
+            g2o::VertexPointXYZ* vl = new g2o::VertexPointXYZ();
+            vl->setId(vertex_id);
+            keypoint_idx2vertex_idx[observed_keypoints[i]] = vertex_id;
+            vl->setEstimate(point_3d_to_vector_3d(p));
+            vl->setMarginalized(true);
+            optimizer.addVertex(vl);
+
+            // Increment vertex_id
+            ++vertex_id;
+
+        }
+
+        // --- Set near Keyframes vertices ---
+        for(unsigned int i=0; i<n_near_keyframes; ++i) {
+
+            // Get the reference to the current keyframe, its pose and its measurement
+            const Keyframe& current_keyframe = this->_keyframes[near_local_keyframes[i]];
+            const cv::Mat& current_pose = this->_poses[current_keyframe.getPoseIdx()];
+            const Measurement& current_meas = this->_measurements[current_keyframe.getMeasIdx()];
+
+            // Create the new vertex
+            g2o::VertexSE3Expmap* vk = new g2o::VertexSE3Expmap();
+            vk->setEstimate(transformation_matrix_to_SE3Quat(current_pose));
+            vk->setId(vertex_id);
+            vk->setFixed(near_local_keyframes[i]==0);         // Block eventually the pose 0
+            optimizer.addVertex(vk);
+
+            // Increment vertex_id
+            ++vertex_id;
+
+            // --- Set edges keyframe -> landmark ---
+            const std::vector<std::pair<unsigned int, unsigned int>>& current_points_associations = \
+                    current_keyframe.getPointsAssociations();
+            const unsigned int n_associations = current_points_associations.size();
+            
+            for(unsigned int association_idx=0; association_idx<n_associations; ++association_idx) {
+
+                // Take references for this association
+                const std::pair<unsigned int, unsigned int>& current_association = \
+                        current_points_associations[association_idx];
+
+                // If this association refers to a keypoint not in the local map, ignore it
+                if(!keypoint_idx2vertex_idx.count(current_association.second) )
+                    continue;    
+                
+                // Take references to points of the associations
+                const unsigned int& point_2d_idx = current_association.first;
+                const unsigned int& keypoint_vertex_idx = keypoint_idx2vertex_idx[current_association.second];
+
+                // Take the measured point of this association
+                const cv::KeyPoint& z = current_meas.getPoints()[point_2d_idx];
+
+                // Create the edge
+                g2o::EdgeSE3ProjectXYZ* e = new g2o::EdgeSE3ProjectXYZ();
+                e->setVertex(0, \
+                        dynamic_cast<g2o::VertexPointXYZ*>(optimizer.vertex(keypoint_vertex_idx)) );
+                e->setVertex(1, \
+                        dynamic_cast<g2o::OptimizableGraph::Vertex*>(vk));
+                e->setMeasurement(point_2d_to_vector_2d(z));
+                e->information() = Eigen::Matrix2d::Identity();
+                g2o::RobustKernelHuber* robust_kernel = new g2o::RobustKernelHuber;
+                e->setRobustKernel(robust_kernel);
+                robust_kernel->setDelta(sqrt(5.99));
+                e->fx = fx; // Camera parameters
+                e->fy = fy;
+                e->cx = cx;
+                e->cy = cy;
+                optimizer.addEdge(e);
+
+            }
+
+        }
+
+        // --- Set far Keyframes vertices ---
+        for(unsigned int i=0; i<n_far_keyframes; ++i) {
+
+            // Get the reference to the current keyframe, its pose and its measurement
+            const Keyframe& current_keyframe = this->_keyframes[far_local_keyframes[i]];
+            const cv::Mat& current_pose = this->_poses[current_keyframe.getPoseIdx()];
+            const Measurement& current_meas = this->_measurements[current_keyframe.getMeasIdx()];
+
+            // Create the new vertex
+            g2o::VertexSE3Expmap* vk = new g2o::VertexSE3Expmap();
+            vk->setEstimate(transformation_matrix_to_SE3Quat(current_pose));
+            vk->setId(vertex_id);
+            vk->setFixed(true);         // Block the far poses
+            optimizer.addVertex(vk);
+
+            // Increment vertex_id
+            ++vertex_id;
+
+            // --- Set edges keyframe -> landmark ---
+            const std::vector<std::pair<unsigned int, unsigned int>>& current_points_associations = \
+                    current_keyframe.getPointsAssociations();
+            const unsigned int n_associations = current_points_associations.size();
+            
+            for(unsigned int association_idx=0; association_idx<n_associations; ++association_idx) {
+
+                // Take references for this association
+                const std::pair<unsigned int, unsigned int>& current_association = \
+                        current_points_associations[association_idx];
+
+                // If this association refers to a keypoint not in the local map, ignore it
+                if(!keypoint_idx2vertex_idx.count(current_association.second) )
+                    continue;
+                
+                // Take references to points of the associations
+                const unsigned int& point_2d_idx = current_association.first;
+                const unsigned int& keypoint_vertex_idx = keypoint_idx2vertex_idx[current_association.second];
+
+                // Take the measured point of this association
+                const cv::KeyPoint& z = current_meas.getPoints()[point_2d_idx];
+
+                // Create the edge
+                g2o::EdgeSE3ProjectXYZ* e = new g2o::EdgeSE3ProjectXYZ();
+                e->setVertex(0, \
+                        dynamic_cast<g2o::VertexPointXYZ*>(optimizer.vertex(keypoint_vertex_idx)) );
+                e->setVertex(1, \
+                        dynamic_cast<g2o::OptimizableGraph::Vertex*>(vk));
+                e->setMeasurement(point_2d_to_vector_2d(z));
+                e->information() = Eigen::Matrix2d::Identity();
+                g2o::RobustKernelHuber* robust_kernel = new g2o::RobustKernelHuber;
+                e->setRobustKernel(robust_kernel);
+                robust_kernel->setDelta(sqrt(5.99));
+                e->fx = fx; // Camera parameters
+                e->fy = fy;
+                e->cx = cx;
+                e->cy = cy;
+                optimizer.addEdge(e);
+
+            }
+
+        }
+
+        // Optimize
+        if(verbose) {
+            std::cout << "LOCAL BUNDLE ADJUSTMENT STARTED" << std::endl;
+        }
+        optimizer.initializeOptimization();
+        optimizer.setVerbose(verbose);
+        optimizer.optimize(n_iters);
+
+        // --- Recover optimized data ---
+        vertex_id = 0;
+
+        // Recover landmarks
+        for(unsigned int i=0; i<n_keypoints; ++i) {
+            g2o::VertexPointXYZ* current_vertex = \
+                    static_cast<g2o::VertexPointXYZ*>(optimizer.vertex(vertex_id));
+            this->_keypoints[i].setPosition( vector_3d_to_point_3d(current_vertex->estimate()) );
+            ++vertex_id;
+        }
+
+        // Recover near keyframes' poses
+        for(unsigned int i=0; i<n_near_keyframes; ++i) {
+            g2o::VertexSE3Expmap* current_vertex = \
+                    static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(vertex_id));
+            this->_poses[this->_keyframes[near_local_keyframes[i]].getPoseIdx()] = \
+                    SE3Quat_to_transformation_matrix(current_vertex->estimate());
+            ++vertex_id;
+        }
+
+        // Recover far keyframes' poses
+        for(unsigned int i=0; i<n_far_keyframes; ++i) {
+            g2o::VertexSE3Expmap* current_vertex = \
+                    static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(vertex_id));
+            this->_poses[this->_keyframes[far_local_keyframes[i]].getPoseIdx()] = \
+                    SE3Quat_to_transformation_matrix(current_vertex->estimate());
+            ++vertex_id;
+        }
+
+        // Clear
+        optimizer.clear();
+
+    }
+
+
+
+
+    /*
     * This function simply allows to add a new keyframe.
     * Setting observer_keyframe_idx to -1 means that we have no observer for
     * this pose.
@@ -413,15 +638,15 @@ namespace SLucAM {
     * This function, given two keyframe ids, returns all the ids of the keypoints
     * seen from both of them.
     */
-    const std::vector<unsigned int> State::getCommonKeypoints(const unsigned int& k1_idx, \
-                                                                const unsigned int& k2_idx) {
+    void State::getCommonKeypoints(const unsigned int& k1_idx, \
+                                    const unsigned int& k2_idx, \
+                                    std::vector<unsigned int>& commond_keypoints_ids) {
         
         // Initialization
         const std::vector<std::pair<unsigned int, unsigned int>>& k1_ass = \
                     this->_keyframes[k1_idx].getPointsAssociations();
         const std::vector<std::pair<unsigned int, unsigned int>>& k2_ass = \
                     this->_keyframes[k2_idx].getPointsAssociations();
-        std::vector<unsigned int> commond_keypoints_ids;
 
         // Create a "counter" for keypoints
         std::map<unsigned int, unsigned int> counter;
@@ -431,9 +656,80 @@ namespace SLucAM {
             counter[ass.second]++;
 
         // Save only keypoints seen from both
+        commond_keypoints_ids.reserve(counter.size());
         for(auto& el: counter)
             if(el.second == 2)
                 commond_keypoints_ids.emplace_back(el.first);
+        commond_keypoints_ids.shrink_to_fit();
+        
+    }
+
+
+
+    /*
+    * This function computes the local map of a given keyframe. In particular
+    * it computes:
+    *   - the vector of keypoints seen from the given keyframe (observed_keypoints)
+    *       TODO: insert also the keypoints seen from the near_local_keyframes?
+    *   - the vector of keyframes that shares a certain number of keypoints
+    *       seen with the given keyframe (near_local_keyframes)
+    *   - the vector of keyframes that observe some keypoints sen from the given
+    *       keyframe, but for which the number is not enough (they will be frozen
+    *       in the local BA) (far_local_keyframes)
+    */
+    void State::getLocalMap(const unsigned int& keyframe_idx, \
+                            std::vector<unsigned int>& observed_keypoints, \
+                            std::vector<unsigned int>& near_local_keyframes, \
+                            std::vector<unsigned int>& far_local_keyframes) {
+
+        // Initialization
+        const Keyframe& reference_keyframe = this->_keyframes[keyframe_idx];
+        const std::vector<std::pair<unsigned int, unsigned int>>& observations_ref = \
+                            reference_keyframe.getPointsAssociations();
+        const unsigned int n_observations_ref = observations_ref.size();
+        std::map<unsigned int, unsigned int> keyframes_observations_counter;
+        const unsigned int common_points_threshold = 10;
+        std::set<unsigned int> observer_keypoints_set;
+
+        // Get all the keypoints seen from the reference keyframe
+        for(unsigned int i=0; i<n_observations_ref; ++i) {
+            observer_keypoints_set.insert(observations_ref[i].second);
+        }
+        const unsigned int n_observed_keypoints = observer_keypoints_set.size();
+
+        // Count the number of common observation per local keyframe
+        for(const auto& keypoint_idx: observer_keypoints_set) {
+            const std::vector<std::pair<unsigned int, unsigned int>>& current_observers = \
+                    this->_keypoints[keypoint_idx].getObservers();
+            const unsigned int n_current_observers = current_observers.size();
+            for(unsigned int obs_idx=0; obs_idx<n_current_observers; ++obs_idx) {
+                keyframes_observations_counter[ current_observers[obs_idx].first ]++;
+            }
+        }
+
+        // Build the near and far local keyframes vectors
+        near_local_keyframes.reserve(keyframes_observations_counter.size());
+        far_local_keyframes.reserve(keyframes_observations_counter.size());
+        for(const auto& el: keyframes_observations_counter) {
+            if(el.second >= common_points_threshold)
+                near_local_keyframes.emplace_back(el.first);
+            else
+                far_local_keyframes.emplace_back(el.first);
+        }
+        near_local_keyframes.shrink_to_fit();
+        far_local_keyframes.shrink_to_fit();
+
+        // Add all the keypoints seen from the near keyframes
+        for(const auto& keyframe_idx: near_local_keyframes) {
+            const std::vector<std::pair<unsigned int, unsigned int>>& observations = \
+                this->_keyframes[keyframe_idx].getPointsAssociations();
+            for(const auto& obs: observations) {
+                observer_keypoints_set.insert(obs.second);
+            }
+        }
+
+        observed_keypoints = std::vector<unsigned int>(observer_keypoints_set.begin(), \
+                                                        observer_keypoints_set.end());
         
     }
 
