@@ -85,16 +85,23 @@ namespace SLucAM {
                             std::vector<unsigned int>& observed_keypoints, \
                             std::vector<unsigned int>& near_local_keyframes, \
                             std::vector<unsigned int>& far_local_keyframes);
-
+        
+        const Measurement& getNextMeasurement() \
+            {return this->_measurements[this->_next_measurement_idx++];};
+        
+        const Measurement& getLastMeasurement() const {
+            if(this->_next_measurement_idx > 0)
+                return this->_measurements[this->_next_measurement_idx-1];
+            else
+                return this->_measurements[0];
+        };
+        
         const cv::Mat& getCameraMatrix() const \
             {return this->_K;};
         
         const cv::Mat& getDistorsionCoefficients() const \
             {return this->_distorsion_coefficients;};
 
-        const Measurement& getNextMeasurement() \
-            {return this->_measurements[this->_next_measurement_idx++];};
-        
         const std::vector<Measurement>& getMeasurements() const \
             {return this->_measurements;};
 

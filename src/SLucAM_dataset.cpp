@@ -773,7 +773,7 @@ namespace SLucAM {
         
         // Initialization
         const Keyframe& last_keyframe = state.getKeyframes().back();
-        const Measurement& last_measure = state.getMeasurements()[last_keyframe.getMeasIdx()];
+        const Measurement& last_measure = state.getLastMeasurement();
         const std::string& last_image = last_measure.getImgName();
         const std::vector<cv::KeyPoint>& last_measure_points = last_measure.getPoints();
         const std::string last_image_filename = folder + "SLucAM_image_name.dat";
