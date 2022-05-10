@@ -72,6 +72,11 @@ namespace SLucAM {
                         std::vector<std::pair<unsigned int, unsigned int>>& _points_associations, \
                         const int& observer_keyframe_idx, const bool verbose=false);
 
+        bool canBeSpawnedAsKeyframe(const cv::Mat& pose, \
+                                    const std::vector<std::pair<unsigned int, unsigned int>> \
+                                        points_associations, \
+                                    const bool verbose=false);
+
         void getCommonKeypoints(const unsigned int& k1_idx, \
                                 const unsigned int& k2_idx, \
                                 std::vector<unsigned int>& common_keypoints_ids);

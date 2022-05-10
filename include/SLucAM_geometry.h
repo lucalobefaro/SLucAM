@@ -56,6 +56,7 @@ namespace SLucAM {
     float compute_median_distance_cam_points(const std::vector<Keypoint>& points, \
                                             const cv::Mat& pose);
     float compute_poses_distance(const cv::Mat& T1, const cv::Mat& T2);
+    float compute_poses_angle(const cv::Mat& T1, const cv::Mat& T2);
 } // namespace SLucAM
 
 

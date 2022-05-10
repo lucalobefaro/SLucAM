@@ -183,7 +183,9 @@ namespace SLucAM {
         if(this->reaminingMeasurements() == 0) return false;
 
         if(verbose) {
-            std::cout << "-> INTEGRATING NEW MEASUREMENT: ";
+            std::cout << "-> INTEGRATING NEW MEASUREMENT (" << \
+                    this->_next_measurement_idx << "/" << \
+                    this->_measurements.size()-1 << "): ";
         }
 
         // Take the measurement to integrate
@@ -202,7 +204,10 @@ namespace SLucAM {
                         verbose)) {
             return false;
         }
-        const unsigned int n_inliers_posit = points_associations.size();
+
+        // Check that the new measurement can be used as a good keyframe
+        if(!this->canBeSpawnedAsKeyframe(predicted_pose, points_associations, verbose))
+            return false;
 
         if(verbose) {
             std::cout << std::endl << "\t";
@@ -230,6 +235,9 @@ namespace SLucAM {
                                 new_landmark_threshold, \
                                 parallax_threshold, \
                                 verbose);
+
+            if(verbose)
+                std::cout << "TOTAL POINTS: " << this->_keypoints.size() << std::endl;
 
         }
 
@@ -635,6 +643,69 @@ namespace SLucAM {
 
 
     /*
+    * This function tells us if a new measurement (represented by its predicted
+    * points associations) can be used as new keyframe. In particular these
+    * conditions must be met in order to insert a new keyframe:
+    *   1. The new measurement has more than 50 points associations (inliers) 
+    *       but, in order to track fast rotations, if the rotation is "too high"
+    *       we need at least 20 points associations
+    *   2. It has less than 90% of common points with the last keyframe (the 90%
+    *       of associations that the last keyframe has) (TURNED OFF NOW)
+    *   3. If the new measurement's predicted pose is "too near" to the last keyframe
+    *       and not has enough rotation (this allows to spawn a lot of keyframes during
+    *       rotations, to not loose track)
+    */
+    bool State::canBeSpawnedAsKeyframe(const cv::Mat& pose, \
+                                        const std::vector<std::pair<unsigned int, unsigned int>> \
+                                            points_associations, \
+                                        const bool verbose) {
+        
+        // Compute the angle between the two poses
+        const cv::Mat& last_keyframe_pose = this->_poses[this->_keyframes.back().getPoseIdx()];
+        const float poses_angle = compute_poses_angle(pose, last_keyframe_pose);
+
+        // Check condition 1
+        if(points_associations.size() < 50 && poses_angle < 0.049) {
+            if(verbose)
+                std::cout << ", not enough inliers...";
+            return false;
+        }
+        if(points_associations.size() < 20) {
+            if(verbose)
+                std::cout << ", not enough inliers...";
+            return false;
+        }
+        
+        /* Check condition 2
+        unsigned int n_common_keypoints = 0;
+        std::map<unsigned int, unsigned int> keypoints_counter;
+        const std::vector<std::pair<unsigned int, unsigned int>>& ref_associations = \
+                this->_keyframes.back().getPointsAssociations();
+        for(const auto& obs: ref_associations)
+            keypoints_counter[obs.second]++;        
+        for(const auto& obs: points_associations)
+            keypoints_counter[obs.second]++;        
+        for(const auto& el: keypoints_counter)
+            if(el.second == 2)
+                ++n_common_keypoints;
+        if(n_common_keypoints >= 0.9*ref_associations.size())
+            return false;
+        */
+
+        // Check condition 3
+        if(compute_poses_distance(pose, last_keyframe_pose) < 0.03 && poses_angle < 0.03) {
+            if(verbose)
+                std::cout << ", not enough displacement...";
+            return false;
+        }
+
+        return true;
+        
+    }
+
+
+
+    /*
     * This function, given two keyframe ids, returns all the ids of the keypoints
     * seen from both of them.
     */
@@ -795,25 +866,17 @@ namespace SLucAM {
                                                         inliers_threshold_POSIT);
 
         if(verbose) {
-            std::cout << n_inliers << " inliers that will be added to meas2";
-        }
-
-        // Check if we have at least 20 inliers
-        if(n_inliers < 20) {
-            if(verbose) {
-                std::cout << ", too few inliers..." << std::endl;
-            }
-            return false;
+            std::cout << n_inliers << " inliers";
         }
 
         // Mantain only the inliers
         points_associations_inliers.reserve(n_inliers);
-        for(unsigned int i=0; i<n_inliers; ++i) {
+        const unsigned int n_unfiltered_associations = points_associations.size();
+        for(unsigned int i=0; i<n_unfiltered_associations; ++i) {
             if(points_associations_filter[i]) {
                 points_associations_inliers.emplace_back(points_associations[i]);
             }
         }
-        points_associations_inliers.shrink_to_fit();
         
         return true;
 
@@ -840,6 +903,7 @@ namespace SLucAM {
         // Initialization
         const unsigned int& n_keyframes = keyframes.size()-1;
         const float matching_distance_threshold = 8;   // 8 for ANMS, 12 for ORB
+        unsigned int n_triangulated = 0;
 
         // Adjust the window size according to the number of keyframes
         // present
@@ -855,15 +919,11 @@ namespace SLucAM {
         const cv::Mat& pose2 = poses[last_keyframe.getPoseIdx()];
 
         if(verbose) {
-            std::cout << "\tTRIANGULATING NEW POINTS" << std::endl;
+            std::cout << "\tTRIANGULATING NEW POINTS: ";
         }
 
         // For each measurement in the window, triangulate new points
         for(unsigned int windows_idx=1; windows_idx<window+1; ++windows_idx) {
-
-            if(verbose) {
-                std::cout << "\t\tMATCHING " << windows_idx << ": ";
-            }
             
             // Take the reference to the keyframe with which triangulate
             const unsigned int keyframe1_idx = n_keyframes-windows_idx;
@@ -875,16 +935,9 @@ namespace SLucAM {
             std::vector<cv::DMatch> matches;
             matcher.match_measurements(meas1, meas2, matches, matching_distance_threshold);
             const unsigned int n_matches = matches.size();
-            
-            if(verbose) {
-                std::cout << n_matches << " matches => \t";
-            }
 
             // If we have no match just ignore this measurement
             if(n_matches == 0) {
-                if(verbose) {
-                    std::cout << " nothing to triangulate." << std::endl;
-                }
                 continue;
             }
 
@@ -922,16 +975,19 @@ namespace SLucAM {
             std::vector<std::pair<unsigned int, unsigned int>> new_points_associations2;
             associateNewKeypoints(triangulated_points, matches, matches_filter, \
                                 keypoints, new_points_associations1, \
-                                new_points_associations2, verbose);
+                                new_points_associations2, false);
             addAssociationKeypoints(keypoints, new_points_associations1, \
                                         keyframe1_idx, keyframes, measurements);
             addAssociationKeypoints(keypoints, new_points_associations2, \
                                         keyframe2_idx, keyframes, measurements);
             current_keyframe.addPointsAssociations(new_points_associations1);
             last_keyframe.addPointsAssociations(new_points_associations2);
-
+            n_triangulated += new_points_associations1.size();
 
         }
+
+        if(verbose)
+            std::cout << n_triangulated << " new points, ";
 
     }
 

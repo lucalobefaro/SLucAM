@@ -607,6 +607,26 @@ namespace SLucAM {
         );
         
     }
+
+
+
+    /*
+    * This function computes the angle between two poses by using the
+    * rotational part only and the functions derived from the Rodrigues'
+    * formula.
+    */  
+    float compute_poses_angle(const cv::Mat& T1, const cv::Mat& T2) {
+
+        // Initialization
+        const cv::Mat R1 = T1.rowRange(0,3).colRange(0,3);
+        const cv::Mat R2 = T2.rowRange(0,3).colRange(0,3);
+
+        // Compute the distance between rotations
+        const cv::Mat R = R1*R2.t();
+
+        // Compute the angle
+        return std::acos( (cv::trace(R)[0]-1.0)/2.0 );
+    }
     
 } // namespace SLucAM
 
