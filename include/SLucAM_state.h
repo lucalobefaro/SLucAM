@@ -77,10 +77,6 @@ namespace SLucAM {
                                         points_associations, \
                                     const bool verbose=false);
 
-        void getCommonKeypoints(const unsigned int& k1_idx, \
-                                const unsigned int& k2_idx, \
-                                std::vector<unsigned int>& common_keypoints_ids);
-
         void getLocalMap(const unsigned int& keyframe_idx, \
                             std::vector<unsigned int>& observed_keypoints, \
                             std::vector<unsigned int>& near_local_keyframes, \
@@ -123,6 +119,7 @@ namespace SLucAM {
                                 Matcher& matcher, \
                                 const std::vector<Keyframe>& keyframes, \
                                 const std::vector<Keypoint>& keypoints, \
+                                const std::vector<unsigned int>& local_keypoints, \
                                 const std::vector<Measurement>& measurements, \
                                 const std::vector<cv::Mat>& poses, \
                                 const cv::Mat& K, \
@@ -140,6 +137,11 @@ namespace SLucAM {
                                         const float& new_landmark_threshold, \
                                         const float& parallax_threshold, \
                                         const bool verbose=false);
+        
+        static void getCommonKeypoints(const unsigned int& k1_idx, \
+                                        const unsigned int& k2_idx, \
+                                        const std::vector<Keyframe>& keyframes, \
+                                        std::vector<unsigned int>& common_keypoints_ids);
         
         static void addAssociationKeypoints(std::vector<Keypoint>& keypoints, \
                                             const std::vector<std::pair<unsigned int, unsigned int>>& \
@@ -165,6 +167,7 @@ namespace SLucAM {
         static void projectAssociations(const Measurement& meas, \
                                         const cv::Mat& T, const cv::Mat& K, \
                                         const std::vector<Keypoint>& keypoints, \
+                                        const std::vector<unsigned int>& local_keypoints, \
                                         const std::vector<Keyframe>& keyframes, \
                                         const std::vector<Measurement>& measurements, \
                                         std::vector<std::pair<unsigned int, unsigned int>>& \

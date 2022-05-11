@@ -88,6 +88,7 @@ namespace SLucAM {
     bool save_current_state(const std::string& folder, \
                             const State& state);
     bool save_poses(const std::string& folder, \
+                    const std::vector<Keyframe>& keyframes, \
                     const std::vector<cv::Mat>& poses);
     bool save_landmarks(const std::string& folder, \
                         const std::vector<Keypoint>& keypoints);

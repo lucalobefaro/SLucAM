@@ -466,7 +466,7 @@ namespace SLucAM {
     *   parallax
     */
     float computeParallax(const cv::Mat& pose1, const cv::Mat& pose2, \
-                                const std::vector<cv::Point3f>& landmarks, \
+                                const std::vector<Keypoint>& keypoints, \
                                 const std::vector<unsigned int>& common_landmarks_ids) {
         
         // Initialization
@@ -489,7 +489,7 @@ namespace SLucAM {
         for(unsigned int i=0; i<n_points; ++i) {
 
             // Take the current 3D point
-            const cv::Point3f& current_point = landmarks[common_landmarks_ids[i]];
+            const cv::Point3f& current_point = keypoints[common_landmarks_ids[i]].getPosition();
 
             // Compute the normal origin-point for pose1
             normal1.at<float>(0,0) = current_point.x - O1.at<float>(0);

@@ -167,7 +167,7 @@ namespace SLucAM {
         measurements.reserve(798);
         while(std::getline(imgs_names_file, current_line)) {
 
-            if(i==200) break;
+            if(i==500) break;
             
             // Get the current filename
             std::stringstream ss_current_line_csv_file(current_line);
@@ -785,8 +785,8 @@ namespace SLucAM {
         f_img << last_image;
         f_img.close();
         
-        // Save all the poses
-        if(!save_poses(folder, state.getPoses())) return false;
+        // Save all the keyframe's poses and the last pose
+        if(!save_poses(folder, state.getKeyframes(), state.getPoses())) return false;
 
         // Save all landmarks
         if(!save_landmarks(folder, state.getKeypoints())) return false;
@@ -805,14 +805,17 @@ namespace SLucAM {
     /*
     * Function that save in a file all the predicted poses with the 
     * format: tx ty tz r11 r12 r13 ... r33 (where rij is the element
-    * in the position <i,j> of the rotation part of the pose)
+    * in the position <i,j> of the rotation part of the pose).
+    * In particular it saves all the poses of the spawned keyframes
+    * and the last pose (the pose of the last integrated measurement)
     */  
     bool save_poses(const std::string& folder, \
+                    const std::vector<Keyframe>& keyframes, \
                     const std::vector<cv::Mat>& poses) {
         
         // Initialization
         const std::string filename = folder + "SLucAM_poses.dat";
-        const unsigned int n_poses = poses.size();
+        const unsigned int n_keyframes = keyframes.size();
 
         // Open the file
         std::ofstream f;
@@ -823,15 +826,26 @@ namespace SLucAM {
         f << "PREDICTED POSES" << std::endl;
         f << "tx\tty\ttz\tr11\tr12\tr13\tr21\tr22\tr23\tr31\tr32\tr33\t";
 
-        // Write all the landmarks
-        for(unsigned int i=0; i<n_poses; ++i) {
-            const cv::Mat& p = poses[i];
+        // Write all the keyframes' poses
+        for(unsigned int i=0; i<n_keyframes; ++i) {
+            const cv::Mat& p = poses[keyframes[i].getPoseIdx()];
             f << std::endl \
                 << p.at<float>(0,3) << "\t" << p.at<float>(1,3) << "\t" << p.at<float>(2,3) << "\t" \
                 << p.at<float>(0,0) << "\t" << p.at<float>(0,1) << "\t" << p.at<float>(0,2) << "\t" \
                 << p.at<float>(1,0) << "\t" << p.at<float>(1,1) << "\t" << p.at<float>(1,2) << "\t" \
                 << p.at<float>(2,0) << "\t" << p.at<float>(2,1) << "\t" << p.at<float>(2,2);
                 
+        }
+
+        // Write the last pose (only if it is not the pose of the last 
+        // keyframe)
+        if(keyframes.back().getMeasIdx() != poses.size()-1) {
+            const cv::Mat& p = poses.back();
+            f << std::endl \
+                << p.at<float>(0,3) << "\t" << p.at<float>(1,3) << "\t" << p.at<float>(2,3) << "\t" \
+                << p.at<float>(0,0) << "\t" << p.at<float>(0,1) << "\t" << p.at<float>(0,2) << "\t" \
+                << p.at<float>(1,0) << "\t" << p.at<float>(1,1) << "\t" << p.at<float>(1,2) << "\t" \
+                << p.at<float>(2,0) << "\t" << p.at<float>(2,1) << "\t" << p.at<float>(2,2);
         }
 
         // Close the file

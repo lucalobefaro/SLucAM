@@ -47,7 +47,7 @@ namespace SLucAM {
                             std::vector<unsigned int>& nearest_points_ids, \
                             const float threshold=100);
     float computeParallax(const cv::Mat& pose1, const cv::Mat& pose2, \
-                            const std::vector<cv::Point3f>& landmarks, \
+                            const std::vector<Keypoint>& keypoints, \
                             const std::vector<unsigned int>& common_landmarks_ids);
     void undistort_keypoints(const std::vector<cv::KeyPoint>& keypoints, \
                             std::vector<cv::KeyPoint>& undistorted_keypoints, \

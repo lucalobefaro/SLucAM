@@ -192,18 +192,25 @@ namespace SLucAM {
         const SLucAM::Measurement& meas_to_integrate = getNextMeasurement();
 
         // Predict the new pose (use previous keyframe's pose as initial guess)
+        // and take the local map points of the last keyframe
         std::vector<std::pair<unsigned int, unsigned int>> points_associations;
         const cv::Mat& pose_1 = this->_poses[this->_keyframes.back().getPoseIdx()];
         cv::Mat predicted_pose = pose_1.clone();
+        std::vector<unsigned int> local_keypoints, near_local_keyframes, far_local_keyframes;
+        this->getLocalMap(this->_keyframes.size()-1, local_keypoints, \
+                                near_local_keyframes, far_local_keyframes);
         if(!predictPose(predicted_pose, meas_to_integrate, points_associations, \
                         matcher, this->_keyframes, \
-                        this->_keypoints, this->_measurements, \
+                        this->_keypoints, local_keypoints, this->_measurements, \
                         this->_poses, this->_K, \
                         kernel_threshold_POSIT, \
                         inliers_threshold_POSIT, \
                         verbose)) {
             return false;
         }
+
+        // Add the new pose
+        this->_poses.emplace_back(predicted_pose);
 
         // Check that the new measurement can be used as a good keyframe
         if(!this->canBeSpawnedAsKeyframe(predicted_pose, points_associations, verbose))
@@ -212,9 +219,6 @@ namespace SLucAM {
         if(verbose) {
             std::cout << std::endl << "\t";
         }
-
-        // Add the new pose
-        this->_poses.emplace_back(predicted_pose);
 
         // Use the new pose/measure as keyframe
         addKeyFrame(this->_next_measurement_idx-1, this->_poses.size()-1, \
@@ -237,7 +241,8 @@ namespace SLucAM {
                                 verbose);
 
             if(verbose)
-                std::cout << "TOTAL POINTS: " << this->_keypoints.size() << std::endl;
+                std::cout << "TOTAL POINTS: " << this->_keypoints.size() \
+                        << std::endl << std::endl;
 
         }
 
@@ -347,7 +352,7 @@ namespace SLucAM {
 
         // Optimize
         if(verbose) {
-            std::cout << "BUNDLE ADJUSTMENT STARTED" << std::endl;
+            std::cout << "GLOBAL BUNDLE ADJUSTMENT STARTED" << std::endl;
         }
         optimizer.initializeOptimization();
         optimizer.setVerbose(verbose);
@@ -665,12 +670,7 @@ namespace SLucAM {
         const float poses_angle = compute_poses_angle(pose, last_keyframe_pose);
 
         // Check condition 1
-        if(points_associations.size() < 50 && poses_angle < 0.049) {
-            if(verbose)
-                std::cout << ", not enough inliers...";
-            return false;
-        }
-        if(points_associations.size() < 20) {
+        if(points_associations.size() < 50) {
             if(verbose)
                 std::cout << ", not enough inliers...";
             return false;
@@ -693,45 +693,13 @@ namespace SLucAM {
         */
 
         // Check condition 3
-        if(compute_poses_distance(pose, last_keyframe_pose) < 0.03 && poses_angle < 0.03) {
+        if(compute_poses_distance(pose, last_keyframe_pose) < 0.02 && poses_angle < 0.02) {
             if(verbose)
                 std::cout << ", not enough displacement...";
             return false;
         }
 
         return true;
-        
-    }
-
-
-
-    /*
-    * This function, given two keyframe ids, returns all the ids of the keypoints
-    * seen from both of them.
-    */
-    void State::getCommonKeypoints(const unsigned int& k1_idx, \
-                                    const unsigned int& k2_idx, \
-                                    std::vector<unsigned int>& commond_keypoints_ids) {
-        
-        // Initialization
-        const std::vector<std::pair<unsigned int, unsigned int>>& k1_ass = \
-                    this->_keyframes[k1_idx].getPointsAssociations();
-        const std::vector<std::pair<unsigned int, unsigned int>>& k2_ass = \
-                    this->_keyframes[k2_idx].getPointsAssociations();
-
-        // Create a "counter" for keypoints
-        std::map<unsigned int, unsigned int> counter;
-        for(auto& ass: k1_ass)
-            counter[ass.second]++;
-        for(auto& ass: k2_ass)
-            counter[ass.second]++;
-
-        // Save only keypoints seen from both
-        commond_keypoints_ids.reserve(counter.size());
-        for(auto& el: counter)
-            if(el.second == 2)
-                commond_keypoints_ids.emplace_back(el.first);
-        commond_keypoints_ids.shrink_to_fit();
         
     }
 
@@ -759,7 +727,7 @@ namespace SLucAM {
                             reference_keyframe.getPointsAssociations();
         const unsigned int n_observations_ref = observations_ref.size();
         std::map<unsigned int, unsigned int> keyframes_observations_counter;
-        const unsigned int common_points_threshold = 10;
+        const unsigned int common_points_threshold = 15;
         std::set<unsigned int> observer_keypoints_set;
 
         // Get all the keypoints seen from the reference keyframe
@@ -829,6 +797,7 @@ namespace SLucAM {
                             Matcher& matcher, \
                             const std::vector<Keyframe>& keyframes, \
                             const std::vector<Keypoint>& keypoints, \
+                            const std::vector<unsigned int>& local_keypoints, \
                             const std::vector<Measurement>& measurements, \
                             const std::vector<cv::Mat>& poses, \
                             const cv::Mat& K, \
@@ -839,7 +808,7 @@ namespace SLucAM {
         // Get all the associations 2D point in the current image -> 3D keypoint
         // in the map
         std::vector<std::pair<unsigned int, unsigned int>> points_associations;
-        projectAssociations(meas_to_predict, guessed_pose, K, keypoints, \
+        projectAssociations(meas_to_predict, guessed_pose, K, keypoints, local_keypoints, \
                             keyframes, measurements, points_associations);
         const unsigned int n_points_associations = points_associations.size();
         if(verbose) {
@@ -941,6 +910,14 @@ namespace SLucAM {
                 continue;
             }
 
+            // Check that the poses have enough parallax
+            std::vector<unsigned int> commond_keypoints_ids;
+            getCommonKeypoints(keyframe1_idx, keyframe2_idx, keyframes, commond_keypoints_ids);
+            if(commond_keypoints_ids.size() < 3)
+                continue;
+            if(computeParallax(pose1, pose2, keypoints, commond_keypoints_ids) < 1)
+                continue;
+
             // Build a matches filter, to take into account only those
             // matched 2D points for which we don't have already a 3D point associated
             std::vector<unsigned int> matches_filter;
@@ -989,6 +966,39 @@ namespace SLucAM {
         if(verbose)
             std::cout << n_triangulated << " new points, ";
 
+    }
+
+
+
+    /*
+    * This function, given two keyframe ids, returns all the ids of the keypoints
+    * seen from both of them.
+    */
+    void State::getCommonKeypoints(const unsigned int& k1_idx, \
+                                    const unsigned int& k2_idx, \
+                                    const std::vector<Keyframe>& keyframes, \
+                                    std::vector<unsigned int>& commond_keypoints_ids) {
+        
+        // Initialization
+        const std::vector<std::pair<unsigned int, unsigned int>>& k1_ass = \
+                        keyframes[k1_idx].getPointsAssociations();
+        const std::vector<std::pair<unsigned int, unsigned int>>& k2_ass = \
+                        keyframes[k2_idx].getPointsAssociations();
+
+        // Create a "counter" for keypoints
+        std::map<unsigned int, unsigned int> counter;
+        for(auto& ass: k1_ass)
+            counter[ass.second]++;
+        for(auto& ass: k2_ass)
+            counter[ass.second]++;
+
+        // Save only keypoints seen from both
+        commond_keypoints_ids.reserve(counter.size());
+        for(auto& el: counter)
+            if(el.second == 2)
+                commond_keypoints_ids.emplace_back(el.first);
+        commond_keypoints_ids.shrink_to_fit();
+        
     }
 
 
@@ -1126,6 +1136,7 @@ namespace SLucAM {
     void State::projectAssociations(const Measurement& meas, \
                                     const cv::Mat& T, const cv::Mat& K, \
                                     const std::vector<Keypoint>& keypoints, \
+                                    const std::vector<unsigned int>& local_keypoints, \
                                     const std::vector<Keyframe>& keyframes, \
                                     const std::vector<Measurement>& measurements, \
                                     std::vector<std::pair<unsigned int, unsigned int>>& \
@@ -1133,7 +1144,7 @@ namespace SLucAM {
         
         // Initialization
         const std::vector<cv::KeyPoint>& points_2d = meas.getPoints();
-        const unsigned int n_points_3d = keypoints.size();
+        const unsigned int n_points_3d = local_keypoints.size();
         const unsigned int n_points_2d = points_2d.size();
         const unsigned int image_width = 2*K.at<float>(0,2);
         const unsigned int image_height = 2*K.at<float>(1,2);
@@ -1174,7 +1185,7 @@ namespace SLucAM {
         for(unsigned int i=0; i<n_points_3d; ++i) {
             
             // Get the current keypoint
-            const Keypoint& kp = keypoints[i];
+            const Keypoint& kp = keypoints[ local_keypoints[i] ];
             const float& kp_w_x = kp.getPosition().x;
             const float& kp_w_y = kp.getPosition().y;
             const float& kp_w_z = kp.getPosition().z;
@@ -1248,7 +1259,7 @@ namespace SLucAM {
 
             // If we found the best association and it is good enough, save it
             if(best_row_idx != -1 && best_distance < distance_threshold) {
-                points_associations.emplace_back(p_2d_idx, row2keypointidx[best_row_idx]);
+                points_associations.emplace_back(p_2d_idx, local_keypoints[row2keypointidx[best_row_idx]]);
             }
 
         }
