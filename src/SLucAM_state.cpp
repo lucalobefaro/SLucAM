@@ -191,10 +191,10 @@ namespace SLucAM {
         // Take the measurement to integrate
         const SLucAM::Measurement& meas_to_integrate = getNextMeasurement();
 
-        // Predict the new pose (use previous keyframe's pose as initial guess)
+        // Predict the new pose (use previous pose as initial guess)
         // and take the local map points of the last keyframe
         std::vector<std::pair<unsigned int, unsigned int>> points_associations;
-        const cv::Mat& pose_1 = this->_poses[this->_keyframes.back().getPoseIdx()];
+        const cv::Mat& pose_1 = this->_poses.back();//[this->_keyframes.back().getPoseIdx()];
         cv::Mat predicted_pose = pose_1.clone();
         std::vector<unsigned int> local_keypoints, near_local_keyframes, far_local_keyframes;
         this->getLocalMap(this->_keyframes.size()-1, local_keypoints, \
@@ -693,7 +693,7 @@ namespace SLucAM {
         */
 
         // Check condition 3
-        if(compute_poses_distance(pose, last_keyframe_pose) < 0.02 && poses_angle < 0.02) {
+        if(compute_poses_distance(pose, last_keyframe_pose) < 0.05 && poses_angle < 0.049) {
             if(verbose)
                 std::cout << ", not enough displacement...";
             return false;
@@ -1149,7 +1149,7 @@ namespace SLucAM {
         const unsigned int image_width = 2*K.at<float>(0,2);
         const unsigned int image_height = 2*K.at<float>(1,2);
         float kp_cam_x, kp_cam_y, kp_cam_z, kp_img_x, kp_img_y, iz;
-        const unsigned int distance_threshold = 50;
+        const unsigned int distance_threshold = 100;
         int current_distance, best_distance;
         unsigned int best_row_idx;
 
