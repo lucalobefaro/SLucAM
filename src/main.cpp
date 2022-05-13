@@ -92,7 +92,7 @@ int main() {
         return 1;
     }
     if(save_exploration) {
-        SLucAM::save_current_state(results_folder+"keyframe"+std::to_string(step)+"_", state);
+        SLucAM::save_current_state(results_folder+"frame"+std::to_string(step)+"_", state);
         step++;
     }
     cout << "--- DONE! ---" << endl << endl;
@@ -103,9 +103,8 @@ int main() {
     // INTEGRATE NEW MEASUREMENT AND EXPAND MAP
     // -----------------------------------------------------------------------------
     cout << "--- ESPLORATION STARTED ---" << endl;
-    unsigned int n_integrated = 0;
     while(state.reaminingMeasurements() != 0) {
-        if(!state.integrateNewMeasurement(matcher, \
+        if(state.integrateNewMeasurement(matcher, \
                                     true, \
                                     local_map_size, \
                                     kernel_threshold_POSIT, \
@@ -113,14 +112,10 @@ int main() {
                                     parallax_threshold, \
                                     new_landmark_threshold, \
                                     verbose)) {
-        } else {
-            n_integrated++;
-            if(n_integrated%10 == 0) {
-                state.performLocalBA(5);
-            }
+            state.performLocalBA(10);
         }
         if(save_exploration) {
-            SLucAM::save_current_state(results_folder+"keyframe"+std::to_string(step)+"_", state);
+            SLucAM::save_current_state(results_folder+"frame"+std::to_string(step)+"_", state);
             step++;
         }
     }
@@ -132,7 +127,10 @@ int main() {
     // PERFORM FINAL BUNDLE ADJUSTMENT
     // -----------------------------------------------------------------------------
     state.performTotalBA(10, verbose);
-
+    if(save_exploration) {
+        SLucAM::save_current_state(results_folder+"frame"+std::to_string(step)+"_", state);
+        step++;
+    }
 
 
     /* -----------------------------------------------------------------------------

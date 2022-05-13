@@ -13,6 +13,7 @@
 // -----------------------------------------------------------------------------
 #include <vector>
 #include <iostream>
+#include <set>
 
 
 
@@ -74,6 +75,8 @@ namespace SLucAM {
         }
 
         unsigned int getObservedPoints(std::vector<unsigned int>& ids) const;
+
+        unsigned int addObservedPointsSet(std::set<unsigned int>& ids_set) const;
 
         const std::vector<unsigned int>& getKeyframesObserved() const {
             return this->_keyframes_observed;

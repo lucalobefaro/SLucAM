@@ -62,4 +62,19 @@ namespace SLucAM {
         return ids.size();
     }
 
+
+
+    /*
+    * This function takes a set of ids and adds to it all the ids of the 3D points
+    * observed by the keyframe. Then returns the number of seen 3D point;
+    */
+    unsigned int Keyframe::addObservedPointsSet(std::set<unsigned int>& ids_set) const {
+        unsigned int n_added_ids = 0;
+        for(const auto& el: this->_points_associations) {
+            ids_set.insert(el.second);
+            ++n_added_ids;
+        }
+        return n_added_ids;
+    }
+
 } // namespace SLucAM

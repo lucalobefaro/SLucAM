@@ -1,7 +1,7 @@
 function res = plot_keyframe(folder, idx)
 
     % Initialization
-    base_filename = folder + "keyframe";
+    base_filename = folder + "frame";
     image_name_filename = "_SLucAM_image_name.dat";
     landmarks_filename = "_SLucAM_landmarks.dat";
     poses_filename = "_SLucAM_poses.dat";

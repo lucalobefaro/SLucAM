@@ -191,9 +191,9 @@ namespace SLucAM {
         // Take the measurement to integrate
         const SLucAM::Measurement& meas_to_integrate = getNextMeasurement();
 
-        // Predict the new pose (use previous keyframe's pose as initial guess)
+        // Predict the new pose (use previous pose as initial guess)
         std::vector<std::pair<unsigned int, unsigned int>> points_associations;
-        const cv::Mat& last_valid_pose = this->_poses[this->_keyframes.back().getPoseIdx()];
+        const cv::Mat& last_valid_pose = this->_poses.back(); //[this->_keyframes.back().getPoseIdx()];
         cv::Mat predicted_pose = last_valid_pose.clone();
         if(!predictPose(predicted_pose, meas_to_integrate, points_associations, \
                         matcher, this->_keyframes, \
@@ -228,7 +228,7 @@ namespace SLucAM {
                                 this->_poses, \
                                 matcher, \
                                 this->_K, \
-                                3, \
+                                4, \
                                 new_landmark_threshold, \
                                 parallax_threshold, \
                                 verbose);
@@ -403,10 +403,6 @@ namespace SLucAM {
         if(n_near_keyframes == 0)
             return;
 
-        // Order the near keyframes (this will allow to block the first pose of
-        // the local graph)
-        std::sort(near_local_keyframes.begin(), near_local_keyframes.end());
-
         // Create optimizer
         g2o::SparseOptimizer optimizer;
         std::unique_ptr<g2o::BlockSolver_6_3::LinearSolverType> linearSolver;
@@ -424,12 +420,13 @@ namespace SLucAM {
         for(unsigned int i=0; i<n_keypoints; ++i) {
 
             // Get the reference to the current landmark
-            const cv::Point3f& p = this->_keypoints[observed_keypoints[i]].getPosition();
+            const unsigned int& current_keypoints_idx = observed_keypoints[i];
+            const cv::Point3f& p = this->_keypoints[current_keypoints_idx].getPosition();
 
             // Create the new vertex
             g2o::VertexPointXYZ* vl = new g2o::VertexPointXYZ();
             vl->setId(vertex_id);
-            keypoint_idx2vertex_idx[observed_keypoints[i]] = vertex_id;
+            keypoint_idx2vertex_idx[current_keypoints_idx] = vertex_id;
             vl->setEstimate(point_3d_to_vector_3d(p));
             vl->setMarginalized(true);
             optimizer.addVertex(vl);
@@ -443,7 +440,8 @@ namespace SLucAM {
         for(unsigned int i=0; i<n_near_keyframes; ++i) {
 
             // Get the reference to the current keyframe, its pose and its measurement
-            const Keyframe& current_keyframe = this->_keyframes[near_local_keyframes[i]];
+            const unsigned int& current_keyframe_idx = near_local_keyframes[i];
+            const Keyframe& current_keyframe = this->_keyframes[current_keyframe_idx];
             const cv::Mat& current_pose = this->_poses[current_keyframe.getPoseIdx()];
             const Measurement& current_meas = this->_measurements[current_keyframe.getMeasIdx()];
 
@@ -451,13 +449,13 @@ namespace SLucAM {
             g2o::VertexSE3Expmap* vk = new g2o::VertexSE3Expmap();
             vk->setEstimate(transformation_matrix_to_SE3Quat(current_pose));
             vk->setId(vertex_id);
-            vk->setFixed(i==0);         // Block the first pose of the local map
             optimizer.addVertex(vk);
 
             // Increment vertex_id
             ++vertex_id;
 
             // --- Set edges keyframe -> landmark ---
+            const std::vector<cv::KeyPoint>& current_meas_points = current_meas.getPoints();
             const std::vector<std::pair<unsigned int, unsigned int>>& current_points_associations = \
                     current_keyframe.getPointsAssociations();
             const unsigned int n_associations = current_points_associations.size();
@@ -467,17 +465,18 @@ namespace SLucAM {
                 // Take references for this association
                 const std::pair<unsigned int, unsigned int>& current_association = \
                         current_points_associations[association_idx];
+                const unsigned int& point_2d_idx = current_association.first;
+                const unsigned int& point_3d_idx = current_association.second;
 
                 // If this association refers to a keypoint not in the local map, ignore it
-                if(!keypoint_idx2vertex_idx.count(current_association.second) )
+                if(!keypoint_idx2vertex_idx.count(point_3d_idx) )
                     continue;    
                 
-                // Take references to points of the associations
-                const unsigned int& point_2d_idx = current_association.first;
-                const unsigned int& keypoint_vertex_idx = keypoint_idx2vertex_idx[current_association.second];
+                // Take reference to the vertex of the current association
+                const unsigned int& keypoint_vertex_idx = keypoint_idx2vertex_idx[point_3d_idx];
 
                 // Take the measured point of this association
-                const cv::KeyPoint& z = current_meas.getPoints()[point_2d_idx];
+                const cv::KeyPoint& z = current_meas_points[point_2d_idx];
 
                 // Create the edge
                 g2o::EdgeSE3ProjectXYZ* e = new g2o::EdgeSE3ProjectXYZ();
@@ -504,7 +503,8 @@ namespace SLucAM {
         for(unsigned int i=0; i<n_far_keyframes; ++i) {
 
             // Get the reference to the current keyframe, its pose and its measurement
-            const Keyframe& current_keyframe = this->_keyframes[far_local_keyframes[i]];
+            const unsigned int& current_keyframe_idx = far_local_keyframes[i];
+            const Keyframe& current_keyframe = this->_keyframes[current_keyframe_idx];
             const cv::Mat& current_pose = this->_poses[current_keyframe.getPoseIdx()];
             const Measurement& current_meas = this->_measurements[current_keyframe.getMeasIdx()];
 
@@ -512,13 +512,14 @@ namespace SLucAM {
             g2o::VertexSE3Expmap* vk = new g2o::VertexSE3Expmap();
             vk->setEstimate(transformation_matrix_to_SE3Quat(current_pose));
             vk->setId(vertex_id);
-            vk->setFixed(true);         // Block the far poses
+            vk->setFixed(true);         // Block far poses
             optimizer.addVertex(vk);
 
             // Increment vertex_id
             ++vertex_id;
 
             // --- Set edges keyframe -> landmark ---
+            const std::vector<cv::KeyPoint>& current_meas_points = current_meas.getPoints();
             const std::vector<std::pair<unsigned int, unsigned int>>& current_points_associations = \
                     current_keyframe.getPointsAssociations();
             const unsigned int n_associations = current_points_associations.size();
@@ -528,17 +529,18 @@ namespace SLucAM {
                 // Take references for this association
                 const std::pair<unsigned int, unsigned int>& current_association = \
                         current_points_associations[association_idx];
+                const unsigned int& point_2d_idx = current_association.first;
+                const unsigned int& point_3d_idx = current_association.second;
 
                 // If this association refers to a keypoint not in the local map, ignore it
-                if(!keypoint_idx2vertex_idx.count(current_association.second) )
+                if(!keypoint_idx2vertex_idx.count(point_3d_idx) )
                     continue;
                 
-                // Take references to points of the associations
-                const unsigned int& point_2d_idx = current_association.first;
-                const unsigned int& keypoint_vertex_idx = keypoint_idx2vertex_idx[current_association.second];
+                // Take reference to the vertex of the current association
+                const unsigned int& keypoint_vertex_idx = keypoint_idx2vertex_idx[point_3d_idx];
 
                 // Take the measured point of this association
-                const cv::KeyPoint& z = current_meas.getPoints()[point_2d_idx];
+                const cv::KeyPoint& z = current_meas_points[point_2d_idx];
 
                 // Create the edge
                 g2o::EdgeSE3ProjectXYZ* e = new g2o::EdgeSE3ProjectXYZ();
@@ -576,7 +578,7 @@ namespace SLucAM {
         for(unsigned int i=0; i<n_keypoints; ++i) {
             g2o::VertexPointXYZ* current_vertex = \
                     static_cast<g2o::VertexPointXYZ*>(optimizer.vertex(vertex_id));
-            this->_keypoints[i].setPosition( vector_3d_to_point_3d(current_vertex->estimate()) );
+            this->_keypoints[observed_keypoints[i]].setPosition( vector_3d_to_point_3d(current_vertex->estimate()) );
             ++vertex_id;
         }
 
@@ -585,15 +587,6 @@ namespace SLucAM {
             g2o::VertexSE3Expmap* current_vertex = \
                     static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(vertex_id));
             this->_poses[this->_keyframes[near_local_keyframes[i]].getPoseIdx()] = \
-                    SE3Quat_to_transformation_matrix(current_vertex->estimate());
-            ++vertex_id;
-        }
-
-        // Recover far keyframes' poses
-        for(unsigned int i=0; i<n_far_keyframes; ++i) {
-            g2o::VertexSE3Expmap* current_vertex = \
-                    static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(vertex_id));
-            this->_poses[this->_keyframes[far_local_keyframes[i]].getPoseIdx()] = \
                     SE3Quat_to_transformation_matrix(current_vertex->estimate());
             ++vertex_id;
         }
@@ -663,8 +656,8 @@ namespace SLucAM {
                                         const bool verbose) {
         
         // Compute the angle between the two poses
-        //const cv::Mat& last_keyframe_pose = this->_poses[this->_keyframes.back().getPoseIdx()];
-        //const float poses_angle = compute_poses_angle(pose, last_keyframe_pose);
+        const cv::Mat& last_keyframe_pose = this->_poses[this->_keyframes.back().getPoseIdx()];
+        const float poses_angle = compute_poses_angle(pose, last_keyframe_pose);
 
         // Check condition 1
         if(points_associations.size() < 50) {
@@ -685,14 +678,16 @@ namespace SLucAM {
         for(const auto& el: keypoints_counter)
             if(el.second == 2)
                 ++n_common_keypoints;
-        if(n_common_keypoints >= 0.9*ref_associations.size())
+        if(n_common_keypoints >= 0.9*ref_associations.size()) {
+            if(verbose) std::cout << "redundant keyframe..." << std::endl << std::endl;
             return false;
+        }
         */
 
         /* Check condition 3
-        if(compute_poses_distance(pose, last_keyframe_pose) < 0.05 && poses_angle < 0.049) {
+        if(compute_poses_distance(pose, last_keyframe_pose) < 0.02 && poses_angle < 0.049) {
             if(verbose)
-                std::cout << ", not enough displacement...";
+                std::cout << "not enough displacement..." << std::endl << std::endl;;
             return false;
         }
         */
@@ -718,55 +713,41 @@ namespace SLucAM {
                             std::vector<unsigned int>& observed_keypoints, \
                             std::vector<unsigned int>& near_local_keyframes, \
                             std::vector<unsigned int>& far_local_keyframes) {
-
+        
         // Initialization
-        const Keyframe& reference_keyframe = this->_keyframes[keyframe_idx];
-        const std::vector<std::pair<unsigned int, unsigned int>>& observations_ref = \
-                            reference_keyframe.getPointsAssociations();
-        const unsigned int n_observations_ref = observations_ref.size();
-        std::map<unsigned int, unsigned int> keyframes_observations_counter;
-        const unsigned int common_points_threshold = 15;
-        std::set<unsigned int> observer_keypoints_set;
+        unsigned int current_keyframe_idx;
+        std::set<unsigned int> observed_keypoints_set;
 
-        // Get all the keypoints seen from the reference keyframe
-        for(unsigned int i=0; i<n_observations_ref; ++i) {
-            observer_keypoints_set.insert(observations_ref[i].second);
+        // Set the values for local map as argued in "Mouragnon, E. & Lhuillier,
+        // M. & Dhome, Michel & Dekeyser, Fabien & Sayd, Patrick. (2006). 
+        //Monocular Vision Based SLAM for Mobile Robots. Pattern Recognition, 
+        // International Conference on. 3. 1027-1031. 10.1109/ICPR.2006.810."
+        unsigned int n = 3;   
+        unsigned int N = 10;
+
+        // If the complete map is smaller than the local map, we cannot compute it
+        if(N > keyframe_idx+1) return;
+
+        /*
+        // Adjust the values of n an N to avoid out of bounds, avoid to insert the
+        // keyframe 0 in the near keyframes and, avoid that the condition N >= n+2
+        // is violated
+        if(n > keyframe_idx) n = keyframe_idx;
+        if(N > keyframe_idx+1) N = keyframe_idx+1;
+        */
+
+        // Take the n keyframes to optimize and the observed keypoints
+        for(unsigned int i=0; i<n; ++i) {
+            current_keyframe_idx = keyframe_idx-i;
+            near_local_keyframes.emplace_back(current_keyframe_idx);
+            this->_keyframes[current_keyframe_idx].addObservedPointsSet(observed_keypoints_set);
         }
-        const unsigned int n_observed_keypoints = observer_keypoints_set.size();
-
-        // Count the number of common observation per local keyframe
-        for(const auto& keypoint_idx: observer_keypoints_set) {
-            const std::vector<std::pair<unsigned int, unsigned int>>& current_observers = \
-                    this->_keypoints[keypoint_idx].getObservers();
-            const unsigned int n_current_observers = current_observers.size();
-            for(unsigned int obs_idx=0; obs_idx<n_current_observers; ++obs_idx) {
-                keyframes_observations_counter[ current_observers[obs_idx].first ]++;
-            }
-        }
-
-        // Build the near and far local keyframes vectors
-        near_local_keyframes.reserve(keyframes_observations_counter.size());
-        far_local_keyframes.reserve(keyframes_observations_counter.size());
-        for(const auto& el: keyframes_observations_counter) {
-            if(el.second >= common_points_threshold)
-                near_local_keyframes.emplace_back(el.first);
-            else
-                far_local_keyframes.emplace_back(el.first);
-        }
-        near_local_keyframes.shrink_to_fit();
-        far_local_keyframes.shrink_to_fit();
-
-        // Add all the keypoints seen from the near keyframes
-        for(const auto& keyframe_idx: near_local_keyframes) {
-            const std::vector<std::pair<unsigned int, unsigned int>>& observations = \
-                this->_keyframes[keyframe_idx].getPointsAssociations();
-            for(const auto& obs: observations) {
-                observer_keypoints_set.insert(obs.second);
-            }
-        }
-
-        observed_keypoints = std::vector<unsigned int>(observer_keypoints_set.begin(), \
-                                                        observer_keypoints_set.end());
+        observed_keypoints = std::vector<unsigned int>(observed_keypoints_set.begin(), \
+                                                        observed_keypoints_set.end());
+        
+        // Take the N keyframes for which we'll take in account only the reprojections
+        for(unsigned int i=n; i<N; ++i)
+            far_local_keyframes.emplace_back(keyframe_idx-i);
         
     }
 
@@ -806,14 +787,14 @@ namespace SLucAM {
         // in the map seen from the last keyframe
         std::vector<std::pair<unsigned int, unsigned int>> points_associations;
         findInitialAssociations(meas_to_predict, points_associations, matcher, \
-                                keyframes, measurements, keypoints);
-        /*
-        std::vector<unsigned int> last_seen_points;
-        keyframes.back().getObservedPoints(last_seen_points);
-        projectOnMeasurement(meas_to_predict, guessed_pose, K, keypoints, \
-                            last_seen_points, points_associations);
-        */
+                                keyframes, measurements, keypoints, 3);
         const unsigned int n_points_associations = points_associations.size();
+        if(n_points_associations < 100) {
+            points_associations.clear();
+            findInitialAssociations(meas_to_predict, points_associations, matcher, \
+                                keyframes, measurements, keypoints, 6);
+        }
+
         if(verbose) {
             std::cout << n_points_associations << " from last keyframes, ";
         }
@@ -899,7 +880,7 @@ namespace SLucAM {
         
         // Initialization
         const unsigned int& n_keyframes = keyframes.size()-1;
-        const float matching_distance_threshold = 8;   // 8 for ANMS, 12 for ORB
+        const float matching_distance_threshold = 10;   // 8 for ANMS, 12 for ORB
         unsigned int n_triangulated = 0;
 
         // Adjust the window size according to the number of keyframes
