@@ -627,6 +627,16 @@ namespace SLucAM {
         // Compute the angle
         return std::acos( (cv::trace(R)[0]-1.0)/2.0 );
     }
+
+
+
+    /*
+    * Computes the distnace between two 2D points.
+    */
+    float compute_distance_2d_points(const float& p1_x, const float& p1_y, \
+                                    const float& p2_x, const float& p2_y) {
+        return std::sqrt(std::pow(p2_x-p1_x, 2) + std::pow(p2_y-p1_y, 2));
+    }
     
 } // namespace SLucAM
 

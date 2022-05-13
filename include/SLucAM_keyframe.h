@@ -73,6 +73,8 @@ namespace SLucAM {
             return this->_points_associations;
         }
 
+        unsigned int getObservedPoints(std::vector<unsigned int>& ids) const;
+
         const std::vector<unsigned int>& getKeyframesObserved() const {
             return this->_keyframes_observed;
         }

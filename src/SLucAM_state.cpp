@@ -191,17 +191,13 @@ namespace SLucAM {
         // Take the measurement to integrate
         const SLucAM::Measurement& meas_to_integrate = getNextMeasurement();
 
-        // Predict the new pose (use previous pose as initial guess)
-        // and take the local map points of the last keyframe
+        // Predict the new pose (use previous keyframe's pose as initial guess)
         std::vector<std::pair<unsigned int, unsigned int>> points_associations;
-        const cv::Mat& pose_1 = this->_poses.back();//[this->_keyframes.back().getPoseIdx()];
-        cv::Mat predicted_pose = pose_1.clone();
-        std::vector<unsigned int> local_keypoints, near_local_keyframes, far_local_keyframes;
-        this->getLocalMap(this->_keyframes.size()-1, local_keypoints, \
-                                near_local_keyframes, far_local_keyframes);
+        const cv::Mat& last_valid_pose = this->_poses[this->_keyframes.back().getPoseIdx()];
+        cv::Mat predicted_pose = last_valid_pose.clone();
         if(!predictPose(predicted_pose, meas_to_integrate, points_associations, \
                         matcher, this->_keyframes, \
-                        this->_keypoints, local_keypoints, this->_measurements, \
+                        this->_keypoints, this->_measurements, \
                         this->_poses, this->_K, \
                         kernel_threshold_POSIT, \
                         inliers_threshold_POSIT, \
@@ -212,21 +208,18 @@ namespace SLucAM {
         // Add the new pose
         this->_poses.emplace_back(predicted_pose);
 
-        // Check that the new measurement can be used as a good keyframe
+        // Check that the new measurement can be used as a good keyframe, and if
+        // yes, save it
         if(!this->canBeSpawnedAsKeyframe(predicted_pose, points_associations, verbose))
             return false;
-
-        if(verbose) {
-            std::cout << std::endl << "\t";
-        }
-
-        // Use the new pose/measure as keyframe
+        if(verbose) std::cout << std::endl << "\t";
         addKeyFrame(this->_next_measurement_idx-1, this->_poses.size()-1, \
-                points_associations, this->_keyframes.size()-1, verbose);
+                points_associations, this->_keyframes.size()-1, verbose);       
 
         // If requested add new landmarks triangulating 
         // new matches between the last integrated keyframe and the last n 
         // (specified by local_map_size) keyframes
+        // TODO: triangulate only on local map??
         if(triangulate_new_points) {
             
             triangulateNewPoints(this->_keyframes, \
@@ -235,7 +228,7 @@ namespace SLucAM {
                                 this->_poses, \
                                 matcher, \
                                 this->_K, \
-                                local_map_size, \
+                                3, \
                                 new_landmark_threshold, \
                                 parallax_threshold, \
                                 verbose);
@@ -410,6 +403,10 @@ namespace SLucAM {
         if(n_near_keyframes == 0)
             return;
 
+        // Order the near keyframes (this will allow to block the first pose of
+        // the local graph)
+        std::sort(near_local_keyframes.begin(), near_local_keyframes.end());
+
         // Create optimizer
         g2o::SparseOptimizer optimizer;
         std::unique_ptr<g2o::BlockSolver_6_3::LinearSolverType> linearSolver;
@@ -454,7 +451,7 @@ namespace SLucAM {
             g2o::VertexSE3Expmap* vk = new g2o::VertexSE3Expmap();
             vk->setEstimate(transformation_matrix_to_SE3Quat(current_pose));
             vk->setId(vertex_id);
-            vk->setFixed(near_local_keyframes[i]==0);         // Block eventually the pose 0
+            vk->setFixed(i==0);         // Block the first pose of the local map
             optimizer.addVertex(vk);
 
             // Increment vertex_id
@@ -658,7 +655,7 @@ namespace SLucAM {
     *       of associations that the last keyframe has) (TURNED OFF NOW)
     *   3. If the new measurement's predicted pose is "too near" to the last keyframe
     *       and not has enough rotation (this allows to spawn a lot of keyframes during
-    *       rotations, to not loose track)
+    *       rotations, to not loose track) (TURNED OFF NOW)
     */
     bool State::canBeSpawnedAsKeyframe(const cv::Mat& pose, \
                                         const std::vector<std::pair<unsigned int, unsigned int>> \
@@ -666,13 +663,13 @@ namespace SLucAM {
                                         const bool verbose) {
         
         // Compute the angle between the two poses
-        const cv::Mat& last_keyframe_pose = this->_poses[this->_keyframes.back().getPoseIdx()];
-        const float poses_angle = compute_poses_angle(pose, last_keyframe_pose);
+        //const cv::Mat& last_keyframe_pose = this->_poses[this->_keyframes.back().getPoseIdx()];
+        //const float poses_angle = compute_poses_angle(pose, last_keyframe_pose);
 
         // Check condition 1
         if(points_associations.size() < 50) {
             if(verbose)
-                std::cout << ", not enough inliers...";
+                std::cout << "too few..." << std::endl << std::endl;
             return false;
         }
         
@@ -692,12 +689,13 @@ namespace SLucAM {
             return false;
         */
 
-        // Check condition 3
+        /* Check condition 3
         if(compute_poses_distance(pose, last_keyframe_pose) < 0.05 && poses_angle < 0.049) {
             if(verbose)
                 std::cout << ", not enough displacement...";
             return false;
         }
+        */
 
         return true;
         
@@ -797,52 +795,82 @@ namespace SLucAM {
                             Matcher& matcher, \
                             const std::vector<Keyframe>& keyframes, \
                             const std::vector<Keypoint>& keypoints, \
-                            const std::vector<unsigned int>& local_keypoints, \
                             const std::vector<Measurement>& measurements, \
                             const std::vector<cv::Mat>& poses, \
                             const cv::Mat& K, \
                             const float& kernel_threshold_POSIT, \
                             const float& inliers_threshold_POSIT, \
                             const bool verbose) {
-
-        // Get all the associations 2D point in the current image -> 3D keypoint
-        // in the map
+        
+        // Get all the association 2D points in the current image -> 3D points
+        // in the map seen from the last keyframe
         std::vector<std::pair<unsigned int, unsigned int>> points_associations;
-        projectAssociations(meas_to_predict, guessed_pose, K, keypoints, local_keypoints, \
-                            keyframes, measurements, points_associations);
+        findInitialAssociations(meas_to_predict, points_associations, matcher, \
+                                keyframes, measurements, keypoints);
+        /*
+        std::vector<unsigned int> last_seen_points;
+        keyframes.back().getObservedPoints(last_seen_points);
+        projectOnMeasurement(meas_to_predict, guessed_pose, K, keypoints, \
+                            last_seen_points, points_associations);
+        */
         const unsigned int n_points_associations = points_associations.size();
         if(verbose) {
-            std::cout << n_points_associations << " points already seen, ";
+            std::cout << n_points_associations << " from last keyframes, ";
         }
 
-        // If we do not have enough points associations, return error
-        if(n_points_associations < 3) {
-            if(verbose) {
-                std::cout << "too few associations..." << std::endl;
-            }
-            return false;
-        }
-
-        // Predict the pose using projective ICP
+        // Predict the intial pose estimation using projective ICP
         std::vector<bool> points_associations_filter(n_points_associations, false);
-        const unsigned int n_inliers = perform_Posit(guessed_pose, \
-                                                        meas_to_predict, \
-                                                        points_associations_filter, \
-                                                        points_associations, \
-                                                        keypoints, \
-                                                        K, \
-                                                        kernel_threshold_POSIT, \
-                                                        inliers_threshold_POSIT);
-
+        unsigned int n_inliers = perform_Posit(guessed_pose, \
+                                                meas_to_predict, \
+                                                points_associations_filter, \
+                                                points_associations, \
+                                                keypoints, \
+                                                K, \
+                                                kernel_threshold_POSIT, \
+                                                inliers_threshold_POSIT, 10);
         if(verbose) {
-            std::cout << n_inliers << " inliers";
+            std::cout << "(" << n_inliers << " inliers), ";
+        }
+
+        // Take only the inliers of POSIT
+        points_associations_inliers.reserve(n_inliers);
+        unsigned int n_unfiltered_associations = points_associations.size();
+        for(unsigned int i=0; i<n_unfiltered_associations; ++i) {
+            if(points_associations_filter[i]) {
+                points_associations_inliers.emplace_back(points_associations[i]);
+            }
+        }
+        points_associations_inliers.swap(points_associations);
+        points_associations_inliers.clear();
+
+        // Project all the points in the map (or local?) and search for the 
+        // associations among the not associated points
+        projectFromMeasurement(meas_to_predict, guessed_pose, K, keypoints, \
+                                points_associations);
+        const unsigned int n_total_points_associations = points_associations.size();
+        if(verbose) {
+            std::cout << n_total_points_associations << " total matches, ";
+        }
+
+        // Optimize the final pose with another POSIT
+        std::vector<bool> total_points_associations_filter(n_total_points_associations, false);
+        n_inliers = perform_Posit(guessed_pose, \
+                                    meas_to_predict, \
+                                    total_points_associations_filter, \
+                                    points_associations, \
+                                    keypoints, \
+                                    K, \
+                                    kernel_threshold_POSIT, \
+                                    inliers_threshold_POSIT, 10);
+        if(verbose) {
+            std::cout << "(" << n_inliers << " inliers) ";
         }
 
         // Mantain only the inliers
         points_associations_inliers.reserve(n_inliers);
-        const unsigned int n_unfiltered_associations = points_associations.size();
+        n_unfiltered_associations = points_associations.size();
         for(unsigned int i=0; i<n_unfiltered_associations; ++i) {
-            if(points_associations_filter[i]) {
+            if(total_points_associations_filter[i]) {
                 points_associations_inliers.emplace_back(points_associations[i]);
             }
         }
@@ -915,7 +943,7 @@ namespace SLucAM {
             getCommonKeypoints(keyframe1_idx, keyframe2_idx, keyframes, commond_keypoints_ids);
             if(commond_keypoints_ids.size() < 3)
                 continue;
-            if(computeParallax(pose1, pose2, keypoints, commond_keypoints_ids) < 1)
+            if(computeParallax(pose1, pose2, keypoints, commond_keypoints_ids) < 0.99)
                 continue;
 
             // Build a matches filter, to take into account only those
@@ -1122,34 +1150,201 @@ namespace SLucAM {
 
 
     /*
-    * This function, given a measurement and a set of 3D point, computes the 
-    * associations 2D point <-> 3D point by searching for those 3D points
-    * that can be candidates for such association.
-    * Inputs:
-    *   meas: measurement to analyze
-    *   keypoints: 3D points
-    *   keyframes: all the keyframes in the state
-    *   measurements: all the measurements in the state
-    *   matcher: useful to compute distance from descriptors
-    *   points_associations: output associations vector
+    * This function, given a measurement, computes all the points associations between
+    * it and all the previous measurements for which we already have a 3D point, 
+    * considering a window of measurements given by window_size.
+    * This is useful to obtain an initial set of points associations for a measurement
+    * for which we want to predict the pose.
     */
-    void State::projectAssociations(const Measurement& meas, \
-                                    const cv::Mat& T, const cv::Mat& K, \
-                                    const std::vector<Keypoint>& keypoints, \
-                                    const std::vector<unsigned int>& local_keypoints, \
-                                    const std::vector<Keyframe>& keyframes, \
-                                    const std::vector<Measurement>& measurements, \
-                                    std::vector<std::pair<unsigned int, unsigned int>>& \
-                                            points_associations) {
+    void State::findInitialAssociations(const Measurement& meas, \
+                                            std::vector<std::pair<unsigned int, unsigned int>>& points_associations, \
+                                            Matcher& matcher, \
+                                            const std::vector<Keyframe>& keyframes, \
+                                            const std::vector<Measurement>& measurements, \
+                                            const std::vector<Keypoint>& keypoints, \
+                                            const unsigned int& window_size) {
+        
+        // Initialization
+        const unsigned int n_keyframes = keyframes.size();
+        const unsigned int n_3d_points = keypoints.size();
+        std::vector<bool> associated_3d_point(n_3d_points, false);
+
+        // Adjust the local map size according to the number of keyframes
+        unsigned int window = window_size;
+        if(window_size > n_keyframes) {
+            window = n_keyframes;
+        }
+
+        // For each measurement in the window
+        points_associations.reserve(window*300);
+        for(unsigned int window_idx=1; window_idx<window+1; ++window_idx) {
+
+            // Take the current keyframe's measurement
+            const Keyframe& current_keyframe = keyframes[n_keyframes-window_idx];
+            const Measurement& current_meas = measurements[current_keyframe.getMeasIdx()];
+            
+            // Match the current measurement with the measure to predict
+            std::vector<cv::DMatch> matches;
+            matcher.match_measurements(current_meas, meas, matches);
+            const unsigned int n_matches = matches.size();
+
+            // Search the matches for which we have already a 3D point predicted     
+            int current_3d_point_idx;
+            for(unsigned int i=0; i<n_matches; ++i) {
+
+                // Get the idx of the landmark for this association (if not we'll have -1)
+                current_3d_point_idx = \
+                    current_keyframe.point2Landmark(matches[i].queryIdx);
+                
+                // If we have a predicted point for this association and we have not
+                // already used it
+                if( (current_3d_point_idx != -1) && \
+                    !associated_3d_point[current_3d_point_idx]) {
+                    
+                    // Add it as point association
+                    points_associations.emplace_back(matches[i].trainIdx, \
+                                                current_3d_point_idx);
+                    associated_3d_point[current_3d_point_idx] = true;
+
+                }
+
+            }
+        }
+        points_associations.shrink_to_fit();
+
+    }
+
+
+
+
+    /*
+    * This function, given a measurement, project all the 3D points in the keypoints
+    * vector for which we have an id in the keypoints_ids vector on the image and
+    * search for 2D points on the image that associate to them.
+    * So it computes, for each 3D point, the best 2D point on the image.
+    */
+    void State::projectOnMeasurement(const Measurement& meas, \
+                                        const cv::Mat& T, const cv::Mat& K, \
+                                        const std::vector<Keypoint>& keypoints, \
+                                        const std::vector<unsigned int>& keypoints_ids, \
+                                        std::vector<std::pair<unsigned int, unsigned int>>& \
+                                                points_associations) {
         
         // Initialization
         const std::vector<cv::KeyPoint>& points_2d = meas.getPoints();
-        const unsigned int n_points_3d = local_keypoints.size();
+        const unsigned int n_points_3d = keypoints_ids.size();
         const unsigned int n_points_2d = points_2d.size();
         const unsigned int image_width = 2*K.at<float>(0,2);
         const unsigned int image_height = 2*K.at<float>(1,2);
         float kp_cam_x, kp_cam_y, kp_cam_z, kp_img_x, kp_img_y, iz;
         const unsigned int distance_threshold = 100;
+        int current_distance, best_distance;
+        unsigned int best_2d_point_idx;
+        std::vector<bool> associated_points(n_points_2d, false);
+
+        // Some reference to save time
+        const float& R11 = T.at<float>(0,0);
+        const float& R12 = T.at<float>(0,1);
+        const float& R13 = T.at<float>(0,2);
+        const float& R21 = T.at<float>(1,0);
+        const float& R22 = T.at<float>(1,1);
+        const float& R23 = T.at<float>(1,2);
+        const float& R31 = T.at<float>(2,0);
+        const float& R32 = T.at<float>(2,1);
+        const float& R33 = T.at<float>(2,2);
+        const float& tx = T.at<float>(0,3);
+        const float& ty = T.at<float>(1,3);
+        const float& tz = T.at<float>(2,3);
+        const float& K11 = K.at<float>(0,0);
+        const float& K12 = K.at<float>(0,1);
+        const float& K13 = K.at<float>(0,2);
+        const float& K21 = K.at<float>(1,0);
+        const float& K22 = K.at<float>(1,1);
+        const float& K23 = K.at<float>(1,2);
+        const float& K31 = K.at<float>(2,0);
+        const float& K32 = K.at<float>(2,1);
+        const float& K33 = K.at<float>(2,2);
+
+        // For each 3D point, first check that it fall in the image, then
+        // search for the 2D point that better associate to it (among the
+        // 2D points not already associated)
+        for(unsigned int i=0; i<n_points_3d; ++i) {
+
+            // Get the current keypoint
+            const unsigned int& current_keypoint_id = keypoints_ids[i];
+            const Keypoint& kp = keypoints[current_keypoint_id];
+            const float& kp_w_x = kp.getPosition().x;
+            const float& kp_w_y = kp.getPosition().y;
+            const float& kp_w_z = kp.getPosition().z;
+
+            // Bring it in camera frame and check if it is in front of cam
+            kp_cam_x = R11*kp_w_x + R12*kp_w_y + R13*kp_w_z + tx;
+            kp_cam_y = R21*kp_w_x + R22*kp_w_y + R23*kp_w_z + ty;
+            kp_cam_z = R31*kp_w_x + R32*kp_w_y + R33*kp_w_z + tz;
+            if(kp_cam_z <= 0)
+                continue;
+
+            // Project the point on image plane
+            iz = K31*kp_cam_x + K32*kp_cam_y + K33*kp_cam_z;
+            kp_img_x = (K11*kp_cam_x + K12*kp_cam_y + K13*kp_cam_z)/iz;
+            kp_img_y = (K21*kp_cam_x + K22*kp_cam_y + K23*kp_cam_z)/iz;
+
+            // Check that the point is inside the image plane
+            if(kp_img_x < 0 || kp_img_x > image_width ||
+                kp_img_y < 0 || kp_img_y > image_height)
+                continue;
+            
+            // Get the representaitve descriptor of the current 3D point
+            const cv::Mat& point_3d_descriptor = kp.getDescriptor();
+
+            // Search for the best 2D point association
+            best_distance = INT_MAX;
+            best_2d_point_idx = -1;
+            for(unsigned int p_idx=0; p_idx<n_points_2d; ++p_idx) {
+                if(associated_points[p_idx])
+                    continue;   // Ignore already associated points
+                current_distance = Matcher::compute_descriptors_distance(\
+                                meas.getDescriptor(p_idx), point_3d_descriptor);
+                if(current_distance < best_distance) {
+                    best_distance = current_distance;
+                    best_2d_point_idx = p_idx;
+                }
+                    
+            }
+
+            // If we found a best and it is good enough, save the association
+            if(best_2d_point_idx != -1 && best_distance<distance_threshold) {
+                points_associations.emplace_back(best_2d_point_idx, current_keypoint_id);
+                associated_points[best_2d_point_idx] = true;
+            } 
+
+        }
+
+    }
+
+
+
+    /*
+    * This function, given a measurement, computes the distance of each 3D point
+    * with each 2D point for which we do not have already have an association.
+    * Then, it choose, for each 2D point, the best 3D point association (that is
+    * the inverted reasoning of what does projectOnMeasurement method)
+    */
+    void State::projectFromMeasurement(const Measurement& meas, \
+                                        const cv::Mat& T, const cv::Mat& K, \
+                                        const std::vector<Keypoint>& keypoints, \
+                                        std::vector<std::pair<unsigned int, unsigned int>>& \
+                                                points_associations) {
+        
+        // Initialization
+        const std::vector<cv::KeyPoint>& points_2d = meas.getPoints();
+        const unsigned int n_points_3d = keypoints.size();
+        const unsigned int n_points_2d = points_2d.size();
+        const unsigned int image_width = 2*K.at<float>(0,2);
+        const unsigned int image_height = 2*K.at<float>(1,2);
+        float kp_cam_x, kp_cam_y, kp_cam_z, kp_img_x, kp_img_y, iz;
+        const unsigned int descriptors_distance_threshold = 100;
+        const float points_distance_threshold = 30;
         int current_distance, best_distance;
         unsigned int best_row_idx;
 
@@ -1176,6 +1371,14 @@ namespace SLucAM {
         const float& K32 = K.at<float>(2,1);
         const float& K33 = K.at<float>(2,2);
 
+        // Create a filter for already associated points
+        std::vector<bool> associated_2d_points(n_points_2d, false);
+        std::vector<bool> associated_3d_points(n_points_3d, false);
+        for(const auto& el: points_associations) {
+            associated_2d_points[el.first] = true;
+            associated_3d_points[el.second] = true;
+        } 
+
         // Build the associations matrix where a row contains all the 
         // distances from a given 3D point to all 2D points in the measurement
         std::vector<std::vector<int>> associations_matrix;
@@ -1183,9 +1386,12 @@ namespace SLucAM {
         unsigned int current_row = 0;
         associations_matrix.reserve(n_points_3d);
         for(unsigned int i=0; i<n_points_3d; ++i) {
+
+            // Discard if this 3D point is already associatied
+            if(associated_3d_points[i]) continue;
             
             // Get the current keypoint
-            const Keypoint& kp = keypoints[ local_keypoints[i] ];
+            const Keypoint& kp = keypoints[i];
             const float& kp_w_x = kp.getPosition().x;
             const float& kp_w_y = kp.getPosition().y;
             const float& kp_w_z = kp.getPosition().z;
@@ -1217,10 +1423,25 @@ namespace SLucAM {
             std::vector<int> current_associations;
             current_associations.reserve(n_points_2d);
             for(unsigned int p_idx=0; p_idx<n_points_2d; ++p_idx) {
-                current_associations.emplace_back(\
-                        Matcher::compute_descriptors_distance(\
-                                meas.getDescriptor(p_idx), point_3d_descriptor) \
-                );
+                
+                // If the distance between the projected point and the 
+                // current 2D point is too large, ignore it by saving a
+                // big descriptor distance
+                const cv::KeyPoint& current_2d_point = meas.getPoints()[p_idx];
+                if(compute_distance_2d_points(kp_img_x, kp_img_y, \
+                                                current_2d_point.pt.x, \
+                                                current_2d_point.pt.y) \
+                    > points_distance_threshold) {
+                    
+                    current_associations.emplace_back(INT_MAX);
+                
+                } else {
+
+                    current_associations.emplace_back(\
+                            Matcher::compute_descriptors_distance(\
+                                    meas.getDescriptor(p_idx), point_3d_descriptor) \
+                    );
+                }
             }
             current_associations.shrink_to_fit();
 
@@ -1233,9 +1454,11 @@ namespace SLucAM {
 
         // Choose, for each 2D point, the best association, avoiding
         // duplicates
-        std::vector<bool> associated_points(n_points_3d, false);
-        points_associations.reserve(n_points_2d);
+        points_associations.reserve(points_associations.size() + n_points_2d);
         for(unsigned int p_2d_idx=0; p_2d_idx<n_points_2d; ++p_2d_idx) {
+
+            // If the current 2D point is already associatied, ignore it
+            if(associated_2d_points[p_2d_idx]) continue;
             
             // Set the current best distance to max and best_row_idx to invalid
             best_distance = INT_MAX;
@@ -1245,8 +1468,7 @@ namespace SLucAM {
             for(unsigned int p_3d_row_idx=0; p_3d_row_idx<n_rows; ++p_3d_row_idx) {
                 
                 // If the current 3D point is already associated, ignore it
-                if(associated_points[p_3d_row_idx])
-                    continue;
+                if(associated_3d_points[p_3d_row_idx]) continue;
                 
                 // Get the distance from the current 3D point and save
                 // if it is the best one
@@ -1258,8 +1480,9 @@ namespace SLucAM {
             }
 
             // If we found the best association and it is good enough, save it
-            if(best_row_idx != -1 && best_distance < distance_threshold) {
-                points_associations.emplace_back(p_2d_idx, local_keypoints[row2keypointidx[best_row_idx]]);
+            if(best_row_idx != -1 && best_distance < descriptors_distance_threshold) {
+                points_associations.emplace_back(p_2d_idx, row2keypointidx[best_row_idx]);
+                associated_3d_points[best_row_idx] = true;
             }
 
         }

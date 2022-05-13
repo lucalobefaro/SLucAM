@@ -150,6 +150,7 @@ namespace SLucAM {
         cv::namedWindow("MATCHED IMGS", cv::WINDOW_AUTOSIZE);
         cv::imshow("MATCHED IMGS", img_matches);
         cv::waitKey(0);
+        cv::destroyAllWindows();
 
         return true;
     }

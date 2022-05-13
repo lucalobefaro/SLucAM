@@ -113,11 +113,10 @@ int main() {
                                     parallax_threshold, \
                                     new_landmark_threshold, \
                                     verbose)) {
-            std::cout << std::endl << "\tBAD KEYFRAME" << std::endl << std::endl;
         } else {
             n_integrated++;
             if(n_integrated%10 == 0) {
-                state.performLocalBA(10);
+                state.performLocalBA(5);
             }
         }
         if(save_exploration) {

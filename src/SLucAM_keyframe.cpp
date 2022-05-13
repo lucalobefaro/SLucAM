@@ -47,4 +47,19 @@ namespace SLucAM {
         return -1;
     }
 
+
+
+    /* 
+    * This function returns the list of ids of the points seen from the 
+    * keyframe.
+    */
+    unsigned int Keyframe::getObservedPoints(std::vector<unsigned int>& ids) const {
+        ids.clear();
+        ids.reserve(this->_points_associations.size());
+        for(const auto& el: this->_points_associations)
+            ids.emplace_back(el.second);
+        ids.shrink_to_fit();
+        return ids.size();
+    }
+
 } // namespace SLucAM

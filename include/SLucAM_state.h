@@ -119,7 +119,6 @@ namespace SLucAM {
                                 Matcher& matcher, \
                                 const std::vector<Keyframe>& keyframes, \
                                 const std::vector<Keypoint>& keypoints, \
-                                const std::vector<unsigned int>& local_keypoints, \
                                 const std::vector<Measurement>& measurements, \
                                 const std::vector<cv::Mat>& poses, \
                                 const cv::Mat& K, \
@@ -163,15 +162,27 @@ namespace SLucAM {
         static bool containsLandmark(const std::vector<std::pair<unsigned int, \
                                         unsigned int>>& points_associations, \
                                         const unsigned int& landmark_idx);
+                                        
+        static void findInitialAssociations(const Measurement& meas, \
+                                            std::vector<std::pair<unsigned int, unsigned int>>& points_associations, \
+                                            Matcher& matcher, \
+                                            const std::vector<Keyframe>& keyframes, \
+                                            const std::vector<Measurement>& measurements, \
+                                            const std::vector<Keypoint>& keypoints, \
+                                            const unsigned int& window_size=3);
 
-        static void projectAssociations(const Measurement& meas, \
+        static void projectOnMeasurement(const Measurement& meas, \
                                         const cv::Mat& T, const cv::Mat& K, \
                                         const std::vector<Keypoint>& keypoints, \
-                                        const std::vector<unsigned int>& local_keypoints, \
-                                        const std::vector<Keyframe>& keyframes, \
-                                        const std::vector<Measurement>& measurements, \
+                                        const std::vector<unsigned int>& keypoints_ids, \
                                         std::vector<std::pair<unsigned int, unsigned int>>& \
                                                 points_associations);
+
+        static void projectFromMeasurement(const Measurement& meas, \
+                                            const cv::Mat& T, const cv::Mat& K, \
+                                            const std::vector<Keypoint>& keypoints, \
+                                            std::vector<std::pair<unsigned int, unsigned int>>& \
+                                                    points_associations);
 
         // Camera matrix and distorsion coefficients
         cv::Mat _K;

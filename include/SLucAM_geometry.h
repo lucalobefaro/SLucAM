@@ -57,6 +57,8 @@ namespace SLucAM {
                                             const cv::Mat& pose);
     float compute_poses_distance(const cv::Mat& T1, const cv::Mat& T2);
     float compute_poses_angle(const cv::Mat& T1, const cv::Mat& T2);
+    float compute_distance_2d_points(const float& p1_x, const float& p1_y, \
+                                    const float& p2_x, const float& p2_y);
 } // namespace SLucAM
 
 
