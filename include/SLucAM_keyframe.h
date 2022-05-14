@@ -42,20 +42,7 @@ namespace SLucAM {
 
         Keyframe(const unsigned int& meas_idx, \
                 const unsigned int& pose_idx, \
-                std::vector<std::pair<unsigned int, unsigned int>>& points_associations, \
-                const unsigned int& n_points_meas);
-
-        const int point2Landmark(const unsigned int& point_idx) const;
-
-        void addPointAssociation(const unsigned int& p_idx, const unsigned int& l_idx) {
-            this->_points_associations.emplace_back(p_idx, l_idx);
-        }
-
-        void addPointsAssociations(std::vector<std::pair<unsigned int, unsigned int>>& \
-                                        new_points_associations){
-            this->_points_associations.insert(this->_points_associations.end(), \
-                new_points_associations.begin(), new_points_associations.end()); 
-        }
+                const std::vector<unsigned int> local_keypoints);
 
         void addKeyframeObserved(const int& pose_idx) {
             this->_keyframes_observed.emplace_back(pose_idx);
@@ -69,15 +56,6 @@ namespace SLucAM {
 
         const unsigned int& getMeasIdx() const {return this->_meas_idx;}
 
-        const std::vector<std::pair<unsigned int, unsigned int>>& \
-                    getPointsAssociations() const {
-            return this->_points_associations;
-        }
-
-        unsigned int getObservedPoints(std::vector<unsigned int>& ids) const;
-
-        unsigned int addObservedPointsSet(std::set<unsigned int>& ids_set) const;
-
         const std::vector<unsigned int>& getKeyframesObserved() const {
             return this->_keyframes_observed;
         }
@@ -86,27 +64,8 @@ namespace SLucAM {
             return this->_observers_keyframes;
         }
 
-        friend std::ostream& operator<< (std::ostream& out, const Keyframe& data) {
-
-            const unsigned int n_points_associations = data._points_associations.size();
-            const unsigned int n_keyframes_associations = data._keyframes_observed.size();
-
-            out << "MEASUREMENT IDX: " << data._meas_idx << std::endl;
-            out << "POSE IDX: " << data._pose_idx << std::endl;
-
-            out << "N. POINTS ASSOCIATED: " << n_points_associations << std::endl;
-            out << "POINTS ASSOCIATION <2d point idx : 3d point idx>: " << std::endl;
-            for(unsigned int i=0; i<n_points_associations; ++i) {
-                out << "\t[" << data._points_associations[i].first << \
-                    " : " << data._points_associations[i].second << "]" << std::endl;
-            }
-            out << "OBSERVED KEYFRAMES IDS: ";
-            for(unsigned int i=0; i<n_keyframes_associations; ++i) {
-                out << "[" << data._keyframes_observed[i] << "] ";
-            }
-            out << std::endl;
-
-            return out;
+        const std::vector<unsigned int>& getLocalKeypoints() const {
+            return this->_local_keypoints;
         }
 
     private:
@@ -118,16 +77,15 @@ namespace SLucAM {
         // Idx of the pose of the keyframe (referred to the list of poses
         // in the state)
         unsigned int _pose_idx;
-
-        // List of associations 2D point <-> 3D point (referred to the 2D points
-        // in the corresponding measurement and the 3D keypoint in the state)
-        std::vector<std::pair<unsigned int, unsigned int>> _points_associations;
         
         // List of keyframes that this observes
         std::vector<unsigned int> _keyframes_observed;
 
         // List of keyframes that observes this
         std::vector<unsigned int> _observers_keyframes;
+
+        // List of local keypoints
+        std::vector<unsigned int> _local_keypoints;
 
     };
 

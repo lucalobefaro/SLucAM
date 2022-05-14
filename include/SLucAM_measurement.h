@@ -12,6 +12,7 @@
 // INCLUDES
 // -----------------------------------------------------------------------------
 #include <opencv2/features2d.hpp>
+#include <set>
 
 
 
@@ -39,6 +40,26 @@ namespace SLucAM {
 
         cv::Mat getDescriptor(const unsigned int& idx) const;
 
+        unsigned int getAssociation(const unsigned int& p_idx) const \
+                {return this->_points2keypoints[p_idx];};
+
+        void getPointsAssociations(std::vector<std::pair<unsigned int, unsigned int>>& \
+                                        points_associations) const;
+        
+        void getCommonKeypoints(const Measurement& meas2, \
+                                std::vector<unsigned int>& commond_keypoints_ids) const;
+
+        void addAssociation(const unsigned int& p_2d_idx, \
+                                const unsigned int& p_3d_idx) \
+                {this->_points2keypoints[p_2d_idx] = p_3d_idx;};
+        
+        void addAssociations(const std::vector<std::pair<unsigned int, unsigned int>>& \
+                                        new_points_associations);
+
+        void getObservedPoints(std::vector<unsigned int>& ids) const;
+
+        void getObservedPointsSet(std::set<unsigned int>& seen_keypoints_set) const;
+
         const unsigned int getId() const \
                 {return this->_meas_id;};
         
@@ -58,6 +79,10 @@ namespace SLucAM {
 
         // The set of descriptors, one per point in the image
         cv::Mat _descriptors;
+
+        // The set of 3D points associated at each 2D point
+        // (-1 is no such association exists)
+        std::vector<unsigned int> _points2keypoints;
 
         // The id of the current measurement
         unsigned int _meas_id;

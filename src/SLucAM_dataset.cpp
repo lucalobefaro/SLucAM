@@ -654,106 +654,6 @@ namespace SLucAM {
 
     }
 
-
-
-    /*
-    * Function that, given the predicted 3D points, returns the error of the prediction
-    * for the synthetic dataset.
-    */
-    float test_predicted_points(const std::string& dataset_folder, \
-                                const std::vector<Keyframe>& keyframes, \
-                                const std::vector<cv::Point3f>& predicted_points, \
-                                const std::vector<std::vector<unsigned int>>& associations) {
-        
-        // Initialization
-        std::vector<cv::Point3f> gt_points;
-        const unsigned int n_keyframes = keyframes.size();
-        unsigned int current_n_observations, current_meas_idx, current_gt_idx;
-        float error = 0.0;
-        float ratio_x, ratio_y, ratio_z, d1, d2, d3;
-        std::map<unsigned int, cv::Point3f> id_to_prediction;
-
-        // Load the ground truth
-        SLucAM::load_3dpoints_ground_truth(dataset_folder+"3d_points.dat", \
-                                            gt_points);
-        
-        // Setting up a map in which in key i we have the prediction
-        // for the landmark with id i
-        for(unsigned int keyframe_idx=0; keyframe_idx<n_keyframes; ++keyframe_idx) {
-
-            // Get the current keypoint measurement idx
-            current_meas_idx = keyframes[keyframe_idx].getMeasIdx();
-
-            // Get the current list of observations point<->landmark
-            const std::vector<std::pair<unsigned int, unsigned int>> current_observations = \
-                    keyframes[keyframe_idx].getPointsAssociations();
-            
-            current_n_observations = current_observations.size();
-            
-            // For each observation
-            for (unsigned int obs_idx=0; obs_idx<current_n_observations; ++obs_idx) {
-
-                // Get the current observation
-                const std::pair<unsigned int, unsigned int> current_obs = \
-                        current_observations[obs_idx];
-
-                // Take the idx of the ground_truth of the current point
-                current_gt_idx = associations[current_meas_idx][current_obs.first];
-
-                // If we do not have yet inserted the prediction for this landmark
-                // insert it
-                if(!id_to_prediction.count(current_gt_idx)) {
-                    id_to_prediction[current_gt_idx] = predicted_points[current_obs.second];
-                }
-
-            }
-
-        }
-
-        // For each prediction compute the error
-        for(const auto& idx_prediction : id_to_prediction) {
-
-            // Take the real value
-            const cv::Point3f& gt_point = gt_points[idx_prediction.first];
-
-            // Take the prediction
-            const cv::Point3f& predicted_point = idx_prediction.second;
-
-            /* Compute ratios, avoiding zeros division
-            if(predicted_point.x != 0) {
-                ratio_x = gt_point.x/predicted_point.x;
-            } else {
-                ratio_x = gt_point.x;
-            }
-            if(predicted_point.y != 0) {
-                ratio_y = gt_point.y/predicted_point.y;
-            } else {
-                ratio_y = gt_point.y;
-            }
-            if(predicted_point.z != 0) {
-                ratio_z = gt_point.z/predicted_point.z;
-            } else {
-                ratio_z = gt_point.z;
-            }
-
-            // Compute the error as the distance between the three ratios
-            d1 = ratio_x-ratio_y;
-            d2 = ratio_x-ratio_z;
-            d3 = ratio_y-ratio_z;
-            error += (sqrt(d1*d1) + sqrt(d2*d2) + sqrt(d3*d3))/3.0;
-            */
-            
-            // Compute the distance between the predicted point and the gt
-            const float dx = predicted_point.x-gt_point.x;
-            const float dy = predicted_point.y-gt_point.y;
-            const float dz = predicted_point.z-gt_point.z;
-            error += sqrt((dx*dx)+(dy*dy)+(dz*dz));
-            
-        }
-
-        return error/id_to_prediction.size();
-    }
-
 } // namespace SLucAM
 
 
@@ -791,8 +691,8 @@ namespace SLucAM {
         // Save all landmarks
         if(!save_landmarks(folder, state.getKeypoints())) return false;
 
-        // Save the edges last_keyframe <-> landmarks
-        if(!save_edges(folder, last_keyframe)) return false;
+        // Save the edges last measurement <-> landmarks
+        if(!save_edges(folder, last_measure)) return false;
 
         // Save the points on the last image
         if(!save_keypoints(folder, last_measure_points)) return false;
@@ -894,12 +794,12 @@ namespace SLucAM {
     * from the given keyframe.
     */
     bool save_edges(const std::string& folder, \
-                    const Keyframe& keyframe) {
+                    const Measurement& measurement) {
         
         // Initialization
         const std::string filename = folder + "SLucAM_edges.dat";
-        const std::vector<std::pair<unsigned int, unsigned int>>& points_associations = \
-                keyframe.getPointsAssociations();
+        std::vector<std::pair<unsigned int, unsigned int>> points_associations;
+        measurement.getPointsAssociations(points_associations);
         const unsigned int n_edges = points_associations.size();
 
         // Open the file

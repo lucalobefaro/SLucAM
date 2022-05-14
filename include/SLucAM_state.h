@@ -69,7 +69,6 @@ namespace SLucAM {
         };
 
         void addKeyFrame(const unsigned int& meas_idx, const unsigned int& pose_idx, \
-                        std::vector<std::pair<unsigned int, unsigned int>>& _points_associations, \
                         const int& observer_keyframe_idx, const bool verbose=false);
 
         bool canBeSpawnedAsKeyframe(const cv::Mat& pose, \
@@ -82,8 +81,10 @@ namespace SLucAM {
                             std::vector<unsigned int>& near_local_keyframes, \
                             std::vector<unsigned int>& far_local_keyframes);
         
-        const Measurement& getNextMeasurement() \
-            {return this->_measurements[this->_next_measurement_idx++];};
+        Measurement& getNextMeasurement() {
+            this->_from_last_keyframe++;
+            return this->_measurements[this->_next_measurement_idx++];
+        };
         
         const Measurement& getLastMeasurement() const {
             if(this->_next_measurement_idx > 0)
@@ -114,6 +115,7 @@ namespace SLucAM {
         
         static bool predictPose(cv::Mat& guessed_pose, \
                                 const Measurement& meas_to_predict, \
+                                const unsigned int& last_meas_idx, \
                                 std::vector<std::pair<unsigned int, unsigned int>>& \
                                         points_associations, \
                                 Matcher& matcher, \
@@ -128,7 +130,7 @@ namespace SLucAM {
 
         static void triangulateNewPoints(std::vector<Keyframe>& keyframes, \
                                         std::vector<Keypoint>& keypoints, \
-                                        const std::vector<Measurement>& measurements, \
+                                        std::vector<Measurement>& measurements, \
                                         const std::vector<cv::Mat>& poses, \
                                         Matcher& matcher, \
                                         const cv::Mat& K, \
@@ -136,18 +138,6 @@ namespace SLucAM {
                                         const float& new_landmark_threshold, \
                                         const float& parallax_threshold, \
                                         const bool verbose=false);
-        
-        static void getCommonKeypoints(const unsigned int& k1_idx, \
-                                        const unsigned int& k2_idx, \
-                                        const std::vector<Keyframe>& keyframes, \
-                                        std::vector<unsigned int>& common_keypoints_ids);
-        
-        static void addAssociationKeypoints(std::vector<Keypoint>& keypoints, \
-                                            const std::vector<std::pair<unsigned int, unsigned int>>& \
-                                                    points_associations, \
-                                            const unsigned int keyframe_idx, \
-                                            const std::vector<Keyframe>& keyframes, \
-                                            const std::vector<Measurement>& measurements);
 
         static void associateNewKeypoints(const std::vector<cv::Point3f>& predicted_landmarks, \
                                         const std::vector<cv::DMatch>& matches, \
@@ -159,14 +149,20 @@ namespace SLucAM {
                                                 unsigned int>>& meas2_points_associations, \
                                         const bool verbose=false);
         
+        static void addPointsAssociations(const unsigned int& meas_idx, \
+                                            const std::vector<std::pair<unsigned int, unsigned int>>& \
+                                                points_associations, \
+                                            std::vector<Measurement>& measurements, \
+                                            std::vector<Keypoint>& keypoints);
+        
         static bool containsLandmark(const std::vector<std::pair<unsigned int, \
                                         unsigned int>>& points_associations, \
                                         const unsigned int& landmark_idx);
                                         
         static void findInitialAssociations(const Measurement& meas, \
+                                            const unsigned int& last_meas_idx, \
                                             std::vector<std::pair<unsigned int, unsigned int>>& points_associations, \
                                             Matcher& matcher, \
-                                            const std::vector<Keyframe>& keyframes, \
                                             const std::vector<Measurement>& measurements, \
                                             const std::vector<Keypoint>& keypoints, \
                                             const unsigned int& window_size=3);
@@ -181,6 +177,7 @@ namespace SLucAM {
         static void projectFromMeasurement(const Measurement& meas, \
                                             const cv::Mat& T, const cv::Mat& K, \
                                             const std::vector<Keypoint>& keypoints, \
+                                            const std::vector<unsigned int>& local_keypoints_ids, \
                                             std::vector<std::pair<unsigned int, unsigned int>>& \
                                                     points_associations);
 
@@ -204,6 +201,9 @@ namespace SLucAM {
 
         // Reference to the next measurement to analyze
         unsigned int _next_measurement_idx;
+
+        // Count how many measurements we integrate from the last keyframe
+        unsigned int _from_last_keyframe;
 
     };
 

@@ -24,8 +24,7 @@ namespace SLucAM {
     * observe the current keypoint, the descriptor that has the minor
     * median distance to the rest of keypoints.
     */
-    void Keypoint::updateDescriptor(const std::vector<Keyframe>& keyframes, \
-                                    const std::vector<Measurement>& measurements) {
+    void Keypoint::updateDescriptor(const std::vector<Measurement>& measurements) {
 
         // Initialization
         const unsigned int n_observers = this->_observers.size();
@@ -39,8 +38,8 @@ namespace SLucAM {
         for(unsigned int i=0; i<n_observers; ++i) {
             for(unsigned int j=0; j<n_observers; ++j) {
                 distances[i][j] = Matcher::compute_descriptors_distance(\
-                        this->getObserverDescriptor(keyframes, measurements, i), 
-                        this->getObserverDescriptor(keyframes, measurements, j));
+                        this->getObserverDescriptor(measurements, i), 
+                        this->getObserverDescriptor(measurements, j));
             }
         }
         
@@ -55,52 +54,19 @@ namespace SLucAM {
                 best_idx = i;
             }
         }
-        this->_descriptor = this->getObserverDescriptor(keyframes, measurements, \
-                                                        best_idx);
+        this->_descriptor = this->getObserverDescriptor(measurements, best_idx);
 
     }
-
-
-    /*
-    * This function, given the idx of a keyframe, deletes from the current
-    * keypoint all the observations from such keyframe.
-    * Outputs:
-    *   number of observers deleted
-    */
-    unsigned int Keypoint::deleteObservers(const unsigned int& keyframe_idx) {
-
-        // Initialization
-        const unsigned int n_observers = this->_observers.size();
-
-        // Create a vector that will contain all the observers
-        std::vector<std::pair<unsigned int, unsigned int>> old_observers;
-        old_observers.swap(this->_observers);
-
-        // Refill the original vector by ignoring the observations made
-        // from the given keyframe
-        this->_observers.reserve(n_observers);
-        for(unsigned int i=0; i<n_observers; ++i) {
-            if(old_observers[i].first != keyframe_idx) 
-                this->_observers.emplace_back(old_observers[i]);
-        }
-        this->_observers.shrink_to_fit();
-
-        // Count how many observations we loose
-        return n_observers-this->_observers.size();
-    } 
 
 
 
     /*
     * This function, given an idx of an observer, returns the associated
-    * descriptor, that is the descriptor of the observer point in the 
-    * measurement associated to the observer keyframe.
+    * descriptor.
     */
-    const cv::Mat Keypoint::getObserverDescriptor(const std::vector<Keyframe>& keyframes, \
-                                                const std::vector<Measurement>& measurements, \
+    const cv::Mat Keypoint::getObserverDescriptor(const std::vector<Measurement>& measurements, \
                                                 const unsigned int& idx) {
-        return measurements[keyframes[this->_observers[idx].first]\
-                                .getMeasIdx()].getDescriptor(this->_observers[idx].second);
+        return measurements[this->_observers[idx].first].getDescriptor(this->_observers[idx].second);
     }
     
 } // namespace SLucAM

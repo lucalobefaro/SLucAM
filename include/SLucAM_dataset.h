@@ -73,10 +73,6 @@ namespace SLucAM {
     bool load_synthetic_camera_matrix(const std::string& filename, cv::Mat& K);
     bool load_3dpoints_ground_truth(const std::string& filename, \
                                     std::vector<cv::Point3f>& gt_points);
-    float test_predicted_points(const std::string& dataset_folder, \
-                                const std::vector<Keyframe>& keyframes, \
-                                const std::vector<cv::Point3f>& predicted_points, \
-                                const std::vector<std::vector<unsigned int>>& associations);
 } // namespace SLucAM
 
 
@@ -93,7 +89,7 @@ namespace SLucAM {
     bool save_landmarks(const std::string& folder, \
                         const std::vector<Keypoint>& keypoints);
     bool save_edges(const std::string& folder, \
-                    const Keyframe& keyframe);
+                    const Measurement& measurement);
     bool save_keypoints(const std::string& folder, \
                         const std::vector<cv::KeyPoint>& points);
 } // namespace SLucAM

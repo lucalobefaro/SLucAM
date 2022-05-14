@@ -13,7 +13,6 @@
 // -----------------------------------------------------------------------------
 #include <vector>
 #include <opencv2/features2d.hpp>
-#include <SLucAM_keyframe.h>
 #include <SLucAM_measurement.h>
 #include <iostream>
 
@@ -26,8 +25,8 @@ namespace SLucAM {
 
     /*
     * This class contains a point in the world. It models the position in the 
-    * world frame and mantain a list of references to the couples <keyframe,
-    * 2D point> that indicates which point from which keyframe refers
+    * world frame and mantain a list of references to the couples <measurement,
+    * 2D point> that indicates which point from which measurement refers
     * to this keypoint. In this way we can obtain a list of descriptors, one
     * for each 2D point connected to it.
     */
@@ -49,18 +48,14 @@ namespace SLucAM {
 
         const cv::Mat& getDescriptor() const {return this->_descriptor;}
 
-        void addObserver(const unsigned int& keyframe_idx, const unsigned int& point_idx) {
-            this->_observers.emplace_back(keyframe_idx, point_idx);
+        void addObserver(const unsigned int& meas_idx, const unsigned int& point_idx) {
+            this->_observers.emplace_back(meas_idx, point_idx);
         }
 
-        unsigned int deleteObservers(const unsigned int& keyframe_idx);
+        void updateDescriptor(const std::vector<Measurement>& measurements);
 
-        void updateDescriptor(const std::vector<Keyframe>& keyframes, \
-                                const std::vector<Measurement>& measurements);
-
-        const cv::Mat getObserverDescriptor(const std::vector<Keyframe>& keyframes, \
-                                                const std::vector<Measurement>& measurements, \
-                                                const unsigned int& idx);
+        const cv::Mat getObserverDescriptor(const std::vector<Measurement>& measurements, \
+                                            const unsigned int& idx);
     
     private:
 
@@ -70,7 +65,7 @@ namespace SLucAM {
         // The most representative descriptor
         cv::Mat _descriptor;
 
-        // List of couples <keyframe idx, 2D point idx> that observes this keypoint
+        // List of couples <measurement idx, 2D point idx> that observes this keypoint
         std::vector<std::pair<unsigned int, unsigned int>> _observers;
 
     };
