@@ -42,7 +42,8 @@ namespace SLucAM {
 
         Keyframe(const unsigned int& meas_idx, \
                 const unsigned int& pose_idx, \
-                const std::vector<unsigned int> local_keypoints);
+                const std::vector<unsigned int>& local_keypoints, \
+                const std::vector<unsigned int>& local_keyframes);
 
         void addKeyframeObserved(const int& pose_idx) {
             this->_keyframes_observed.emplace_back(pose_idx);
@@ -68,6 +69,10 @@ namespace SLucAM {
             return this->_local_keypoints;
         }
 
+        const std::vector<unsigned int>& getLocalKeyframes() const {
+            return this->_local_keyframes;
+        }
+
     private:
 
         // Idx of the measure of the keyframe (referred to the list of measurements
@@ -86,6 +91,9 @@ namespace SLucAM {
 
         // List of local keypoints
         std::vector<unsigned int> _local_keypoints;
+
+        // List of local keyframes
+        std::vector<unsigned int> _local_keyframes;
 
     };
 

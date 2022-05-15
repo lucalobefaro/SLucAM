@@ -46,6 +46,8 @@ namespace SLucAM {
             return this->_observers;
         }
 
+        void setDescriptor(const cv::Mat& d) {this->_descriptor = d;}
+
         const cv::Mat& getDescriptor() const {return this->_descriptor;}
 
         void addObserver(const unsigned int& meas_idx, const unsigned int& point_idx) {

@@ -39,6 +39,9 @@ namespace SLucAM {
         // Initialize the points associations
         this->_points2keypoints = \
             std::vector<unsigned int>(this->_points.size(), -1);
+        
+        // Initialize the keyframe id to NOT A KEYFRAME
+        this->_keyframe_idx = -1;
     }
 
 

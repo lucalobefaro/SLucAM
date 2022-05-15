@@ -60,6 +60,12 @@ namespace SLucAM {
 
         void getObservedPointsSet(std::set<unsigned int>& seen_keypoints_set) const;
 
+        bool isKeyframe() const {return this->_keyframe_idx!=-1;}
+
+        void setKeyframeIdx(const int& idx) {this->_keyframe_idx = idx;}
+
+        const int& getKeyframeIdx() const {return this->_keyframe_idx;}
+
         const unsigned int getId() const \
                 {return this->_meas_id;};
         
@@ -83,6 +89,10 @@ namespace SLucAM {
         // The set of 3D points associated at each 2D point
         // (-1 is no such association exists)
         std::vector<unsigned int> _points2keypoints;
+
+        // Idx of the keyframe for this measurement,
+        // if it is not a keyframe, this value is -1
+        int _keyframe_idx;
 
         // The id of the current measurement
         unsigned int _meas_id;
