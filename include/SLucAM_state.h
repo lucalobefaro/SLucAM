@@ -167,13 +167,6 @@ namespace SLucAM {
                                             const std::vector<Keypoint>& keypoints, \
                                             const unsigned int& window_size=3);
 
-        static void projectOnMeasurement(const Measurement& meas, \
-                                        const cv::Mat& T, const cv::Mat& K, \
-                                        const std::vector<Keypoint>& keypoints, \
-                                        const std::vector<unsigned int>& keypoints_ids, \
-                                        std::vector<std::pair<unsigned int, unsigned int>>& \
-                                                points_associations);
-
         static void projectFromMeasurement(const Measurement& meas, \
                                             const cv::Mat& T, const cv::Mat& K, \
                                             const std::vector<Keypoint>& keypoints, \

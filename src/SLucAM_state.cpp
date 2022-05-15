@@ -1184,120 +1184,11 @@ namespace SLucAM {
 
 
 
-
-    /*
-    * This function, given a measurement, project all the 3D points in the keypoints
-    * vector for which we have an id in the keypoints_ids vector on the image and
-    * search for 2D points on the image that associate to them.
-    * So it computes, for each 3D point, the best 2D point on the image.
-    */
-    void State::projectOnMeasurement(const Measurement& meas, \
-                                        const cv::Mat& T, const cv::Mat& K, \
-                                        const std::vector<Keypoint>& keypoints, \
-                                        const std::vector<unsigned int>& keypoints_ids, \
-                                        std::vector<std::pair<unsigned int, unsigned int>>& \
-                                                points_associations) {
-        
-        // Initialization
-        const std::vector<cv::KeyPoint>& points_2d = meas.getPoints();
-        const unsigned int n_points_3d = keypoints_ids.size();
-        const unsigned int n_points_2d = points_2d.size();
-        const unsigned int image_width = 2*K.at<float>(0,2);
-        const unsigned int image_height = 2*K.at<float>(1,2);
-        float kp_cam_x, kp_cam_y, kp_cam_z, kp_img_x, kp_img_y, iz;
-        const unsigned int distance_threshold = 100;
-        int current_distance, best_distance;
-        unsigned int best_2d_point_idx;
-        std::vector<bool> associated_points(n_points_2d, false);
-
-        // Some reference to save time
-        const float& R11 = T.at<float>(0,0);
-        const float& R12 = T.at<float>(0,1);
-        const float& R13 = T.at<float>(0,2);
-        const float& R21 = T.at<float>(1,0);
-        const float& R22 = T.at<float>(1,1);
-        const float& R23 = T.at<float>(1,2);
-        const float& R31 = T.at<float>(2,0);
-        const float& R32 = T.at<float>(2,1);
-        const float& R33 = T.at<float>(2,2);
-        const float& tx = T.at<float>(0,3);
-        const float& ty = T.at<float>(1,3);
-        const float& tz = T.at<float>(2,3);
-        const float& K11 = K.at<float>(0,0);
-        const float& K12 = K.at<float>(0,1);
-        const float& K13 = K.at<float>(0,2);
-        const float& K21 = K.at<float>(1,0);
-        const float& K22 = K.at<float>(1,1);
-        const float& K23 = K.at<float>(1,2);
-        const float& K31 = K.at<float>(2,0);
-        const float& K32 = K.at<float>(2,1);
-        const float& K33 = K.at<float>(2,2);
-
-        // For each 3D point, first check that it fall in the image, then
-        // search for the 2D point that better associate to it (among the
-        // 2D points not already associated)
-        for(unsigned int i=0; i<n_points_3d; ++i) {
-
-            // Get the current keypoint
-            const unsigned int& current_keypoint_id = keypoints_ids[i];
-            const Keypoint& kp = keypoints[current_keypoint_id];
-            const float& kp_w_x = kp.getPosition().x;
-            const float& kp_w_y = kp.getPosition().y;
-            const float& kp_w_z = kp.getPosition().z;
-
-            // Bring it in camera frame and check if it is in front of cam
-            kp_cam_x = R11*kp_w_x + R12*kp_w_y + R13*kp_w_z + tx;
-            kp_cam_y = R21*kp_w_x + R22*kp_w_y + R23*kp_w_z + ty;
-            kp_cam_z = R31*kp_w_x + R32*kp_w_y + R33*kp_w_z + tz;
-            if(kp_cam_z <= 0)
-                continue;
-
-            // Project the point on image plane
-            iz = K31*kp_cam_x + K32*kp_cam_y + K33*kp_cam_z;
-            kp_img_x = (K11*kp_cam_x + K12*kp_cam_y + K13*kp_cam_z)/iz;
-            kp_img_y = (K21*kp_cam_x + K22*kp_cam_y + K23*kp_cam_z)/iz;
-
-            // Check that the point is inside the image plane
-            if(kp_img_x < 0 || kp_img_x > image_width ||
-                kp_img_y < 0 || kp_img_y > image_height)
-                continue;
-            
-            // Get the representaitve descriptor of the current 3D point
-            const cv::Mat& point_3d_descriptor = kp.getDescriptor();
-
-            // Search for the best 2D point association
-            best_distance = INT_MAX;
-            best_2d_point_idx = -1;
-            for(unsigned int p_idx=0; p_idx<n_points_2d; ++p_idx) {
-                if(associated_points[p_idx])
-                    continue;   // Ignore already associated points
-                current_distance = Matcher::compute_descriptors_distance(\
-                                meas.getDescriptor(p_idx), point_3d_descriptor);
-                if(current_distance < best_distance) {
-                    best_distance = current_distance;
-                    best_2d_point_idx = p_idx;
-                }
-                    
-            }
-
-            // If we found a best and it is good enough, save the association
-            if(best_2d_point_idx != -1 && best_distance<distance_threshold) {
-                points_associations.emplace_back(best_2d_point_idx, current_keypoint_id);
-                associated_points[best_2d_point_idx] = true;
-            } 
-
-        }
-
-    }
-
-
-
     /*
     * This function, given a measurement, computes the distance of each 3D point
     * with each 2D point for which we do not have already have an association.
     * It considers only those 3D points which id is in the local_keypoints_ids vector.
-    * Then, it choose, for each 2D point, the best 3D point association (that is
-    * the inverted reasoning of what does projectOnMeasurement method)
+    * Then, it choose, for each 2D point, the best 3D point association.
     */
     void State::projectFromMeasurement(const Measurement& meas, \
                                         const cv::Mat& T, const cv::Mat& K, \
@@ -1355,10 +1246,7 @@ namespace SLucAM {
         std::map<unsigned int, unsigned int> row2keypointidx;
         unsigned int current_row = 0;
         associations_matrix.reserve(n_local_keypoints);
-        for(const auto& local_keypoint_id : local_keypoints_ids) {
-
-            // Get the id of the current 3D point
-            const unsigned int& current_3d_p_idx = local_keypoints_ids[local_keypoint_id];
+        for(const auto& current_3d_p_idx : local_keypoints_ids) {
 
             // Discard if this 3D point is already associatied
             if(associated_3d_points[current_3d_p_idx]) continue;
