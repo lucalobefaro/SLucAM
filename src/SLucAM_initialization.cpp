@@ -47,9 +47,8 @@ namespace SLucAM {
                     std::vector<cv::DMatch>& matches, \
                     std::vector<unsigned int>& matches_filter, \
                     std::vector<cv::Point3f>& triangulated_points, \
-                    const unsigned int n_iters_ransac, \
-                    const float parallax_threshold, \
-                    const bool verbose) {
+                    const bool verbose, \
+                    const unsigned int n_iters_ransac) {
         
         // Initialization
         matches.clear();
@@ -97,8 +96,8 @@ namespace SLucAM {
         // and triangulate initial map
         unsigned int n_inliers;
         if(!initialize_map(p_img1, p_img2, matches, matches_filter, \
-                            F, K, predicted_pose, triangulated_points, n_inliers, \
-                            parallax_threshold, verbose)) {
+                            F, K, predicted_pose, triangulated_points, \
+                            n_inliers, verbose)) {
             return false;
         }
 
@@ -138,8 +137,8 @@ namespace SLucAM {
                         cv::Mat& X, \
                         std::vector<cv::Point3f>& triangulated_points, \
                         unsigned int& n_inliers, \
-                        const float parallax_threshold, \
-                        const bool verbose) {
+                        const bool verbose, \
+                        const float parallax_threshold) {
 
         // Initialization
         cv::Mat best_R, best_t;

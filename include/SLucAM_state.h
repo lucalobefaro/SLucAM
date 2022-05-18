@@ -47,17 +47,12 @@ namespace SLucAM {
             const unsigned int expected_landmarks);
         
         bool initializeState(Matcher& matcher, \
-                            const unsigned int n_iters_ransac, \
-                            const float& parallax_threshold=1.0, \
                             const bool verbose=false);
         
         bool integrateNewMeasurement(Matcher& matcher, \
                                         const bool& triangulate_new_points, \
-                                        const unsigned int& local_map_size, \
                                         const float& kernel_threshold_POSIT, \
                                         const float& inliers_threshold_POSIT, \
-                                        const float& parallax_threshold, \
-                                        const float& new_landmark_threshold, \
                                         const bool verbose);
         
         void performTotalBA(const unsigned int& n_iters, const bool verbose=false);

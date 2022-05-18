@@ -2,14 +2,14 @@
 warning('off');
 folder = "../results/";
 results_folder = "./images/";
-n_keyframes = 600;
+n_keyframes = 320;
 
-%{
+%
 % create an invisible figure
 f = figure('visible', 'off');
 
 % Plot all the keyframes
-for i = 0:n_keyframes
+for i = 300:n_keyframes
     
     % Plot the current keyframe
     plot_keyframe(folder, i);
@@ -28,9 +28,9 @@ end
 delete(f);
 
 disp("DONE!");
-%}
+%
 
 %
 f = figure('visible', 'on');
-plot_keyframe(folder,330);
+plot_keyframe(folder,145);
 %

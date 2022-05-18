@@ -41,38 +41,12 @@ namespace SLucAM {
     bool load_TUM_dataset(const std::string& dataset_folder, State& state, \
                             FeatureExtractor& feature_extractor, \
                             const bool verbose=false);
+    bool load_preextracted_TUM_dataset(const std::string& dataset_folder, \
+                            const std::string& features_folder, State& state, \
+                            const bool verbose=false);
     bool load_TUM_camera_matrix(const std::string& filename, cv::Mat& K, \
                                 cv::Mat& distorsion_coefficients);
     bool save_TUM_results(const std::string& dataset_folder, const State& state);
-} // namespace SLucAM
-
-
-
-// -----------------------------------------------------------------------------
-// Functions to deal with the Pering Laboratory Dataset
-// -----------------------------------------------------------------------------
-namespace SLucAM {
-    bool load_PRD_dataset(const std::string& dataset_folder, State& state);
-    bool load_PRD_camera_matrix(const std::string& filename, cv::Mat& K);
-    bool save_keypoints_PRD(const std::string& filename, \
-                            const std::vector<cv::KeyPoint>& points, \
-                            const cv::Mat& descriptors);
-    bool load_keypoints_PRD(const std::string& filename, \
-                            std::vector<cv::KeyPoint>& points, \
-                            cv::Mat& descriptors);
-} // namespace SLucAM
-
-
-
-// -----------------------------------------------------------------------------
-// Functions to deal with my Synthetic Dataset
-// -----------------------------------------------------------------------------
-namespace SLucAM {
-    bool load_synthetic_dataset(const std::string& dataset_folder, State& state, \
-                                std::vector<std::vector<unsigned int>>& associations);
-    bool load_synthetic_camera_matrix(const std::string& filename, cv::Mat& K);
-    bool load_3dpoints_ground_truth(const std::string& filename, \
-                                    std::vector<cv::Point3f>& gt_points);
 } // namespace SLucAM
 
 

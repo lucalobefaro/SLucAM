@@ -157,17 +157,17 @@ namespace SLucAM {
         imgs_names_file.open(imgs_names_filename);
         if(imgs_names_file.fail()) return false;
 
-        // Ignore the first thre lines
+        // Ignore the first three lines
         std::getline(imgs_names_file, current_line);
         std::getline(imgs_names_file, current_line);
         std::getline(imgs_names_file, current_line);
 
         // Load all measurements
         int i = 0;
-        measurements.reserve(798);
+        measurements.reserve(1500);
         while(std::getline(imgs_names_file, current_line)) {
 
-            if(i==500) break;
+            if(i==50) break;
             
             // Get the current filename
             std::stringstream ss_current_line_csv_file(current_line);
@@ -199,6 +199,10 @@ namespace SLucAM {
             ++i;
 
         }
+        measurements.shrink_to_fit();
+
+        // Close the file
+        imgs_names_file.close();
 
         // Initialize the state
         state = State(K, distorsion_coefficients, measurements, \
@@ -213,6 +217,121 @@ namespace SLucAM {
 
         return true;
 
+    }
+
+
+    bool load_preextracted_TUM_dataset(const std::string& dataset_folder, \
+                            const std::string& features_folder, State& state, \
+                            const bool verbose) {
+        
+        // Initialization
+        const std::string camera_matrix_filename = dataset_folder + "camera_parameters.txt";
+        const std::string imgs_names_filename = dataset_folder + "rgb.txt";
+        const std::string features_folder_path = dataset_folder + features_folder;
+        std::string current_line, current_img_filename, current_filename;
+        float x,y,d;
+        cv::Mat K, distorsion_coefficients;
+        std::vector<Measurement> measurements;
+
+        // Load the camera matrix
+        if(!load_TUM_camera_matrix(camera_matrix_filename, K, distorsion_coefficients))
+            return false;
+
+        // Open the file containing the ordered names of the images
+        std::fstream imgs_names_file;
+        imgs_names_file.open(imgs_names_filename);
+        if(imgs_names_file.fail()) return false;
+
+        // Ignore the first three lines
+        std::getline(imgs_names_file, current_line);
+        std::getline(imgs_names_file, current_line);
+        std::getline(imgs_names_file, current_line);
+
+        // Load all measurements
+        int i = 0;
+        measurements.reserve(1500);
+        while(std::getline(imgs_names_file, current_line)) {
+
+            if(i==200) break;
+            
+            // Get the current filename
+            std::stringstream ss_current_line_csv_file(current_line);
+            ss_current_line_csv_file >> current_filename; 
+            ss_current_line_csv_file >> current_filename;
+            current_img_filename = dataset_folder+current_filename;
+            current_filename = features_folder_path+current_filename.substr(4);
+            current_filename = current_filename.substr(0,current_filename.size()-3) + "dat";
+
+            // Open the current file
+            std::fstream current_file;
+            current_file.open(current_filename);
+            if(current_file.fail()) return false;
+
+            // Load all points and associated descriptors
+            std::vector<cv::KeyPoint> points; points.reserve(1000);
+            std::vector<std::vector<float>> desc; desc.reserve(1000);
+            while(std::getline(current_file, current_line)) {
+                
+                // Get the stringstream
+                std::stringstream ss_current_line_feats(current_line);
+
+                // Read the point
+                x, y;
+                ss_current_line_feats >> x >> y;
+                points.emplace_back(cv::KeyPoint(cv::Point2f(x,y),1.0));
+
+                // Read the descriptor
+                std::vector<float> current_desc; current_desc.reserve(1000);
+                while(ss_current_line_feats >> d) {
+                    current_desc.emplace_back(d);
+                }
+                current_desc.shrink_to_fit();
+                desc.emplace_back(current_desc);
+
+            }
+            points.shrink_to_fit(); desc.shrink_to_fit();
+
+            // Convert the descriptors in cv::Mat
+            const unsigned int n_points = desc.size();
+            const unsigned int length_desc = desc.back().size();
+            cv::Mat descriptors = cv::Mat::zeros(n_points, length_desc, CV_32F);
+            unsigned int c,r = 0;
+            for(const auto& row: desc) {
+                c = 0;
+                for(const auto& col: row) {
+                    descriptors.at<float>(r,c) = col;
+                    ++c;
+                }
+                ++r;
+            }
+
+            // Create new measurement
+            measurements.emplace_back(Measurement(points, descriptors));
+
+            // Memorize the name of the image
+            measurements.back().setImgName(current_img_filename);
+
+            ++i;
+
+        }
+        measurements.shrink_to_fit();
+
+        // Close the file
+        imgs_names_file.close();
+
+        // Initialize the state
+        state = State(K, distorsion_coefficients, measurements, \
+                        measurements.size(), 50000);
+
+        if(verbose) {
+            std::cout << "Loaded " << measurements.size() << " measurements" \
+                << " with camera matrix:" << std::endl << K << std::endl \
+                << "and distorsion parameters: " << std::endl \
+                << distorsion_coefficients << std::endl;
+        }
+
+        return true;
+        
     }
 
 
@@ -247,408 +366,52 @@ namespace SLucAM {
         // Initialization
         std::string results_filename = dataset_folder + "SLucAM_results.txt";
         std::string current_line;
+        const std::vector<Keyframe>& keyframes = state.getKeyframes();
+        const std::vector<cv::Mat>& poses = state.getPoses();
+        const std::vector<Measurement>& measurements = state.getMeasurements();
+        std::string delimiter = "/";
+        int start, end;
 
         // Open the file where to save the results
         std::ofstream results_file;
         results_file.open(results_filename);
         if(results_file.fail()) return false;
+        results_file << std::fixed;
 
-        // Save each pose in the state (pose wrt world), in the TUM format
-        // TODO: save also timestamps
-        const unsigned int n_poses = state.getPoses().size();
-        for(unsigned int i=0; i<n_poses; ++i) {
-            const cv::Mat current_pose = invert_transformation_matrix(state.getPoses()[i]);
+        // Save each keyframe's pose in the state, in the TUM format
+        for(const Keyframe& kf : keyframes) {
+            
+            // Get the pose of the current keyframe
+            const cv::Mat current_pose = invert_transformation_matrix(poses[kf.getPoseIdx()]);
             cv::Mat current_quat;
             matrix_to_quaternion(current_pose.rowRange(0,3).colRange(0,3), \
                     current_quat);
-            results_file << std::setprecision(4) \
-                << current_pose.at<float>(0,3) << "\t" \
-                << current_pose.at<float>(1,3) << "\t" \
-                << current_pose.at<float>(2,3) << "\t" \
-                << current_quat.at<float>(0,0) << "\t" \
-                << current_quat.at<float>(1,0) << "\t" \
-                << current_quat.at<float>(2,0) << "\t" \
+            
+            // Get the timestamp of the current keyframe from the image from which it is
+            // extracted
+            const std::string current_img_name = measurements[kf.getMeasIdx()].getImgName();    
+            start = 0;
+            end = current_img_name.find(delimiter);
+            while (end != -1) {
+                start = end + delimiter.size();
+                end = current_img_name.find(delimiter, start);
+            }
+            const double current_timestamp = std::stod(current_img_name.substr(start, end - start));
+
+            results_file << std::setprecision(6) \
+                << current_timestamp << " " \
+                << std::setprecision(7) \
+                << current_pose.at<float>(0,3) << " " \
+                << current_pose.at<float>(1,3) << " " \
+                << current_pose.at<float>(2,3) << " " \
+                << current_quat.at<float>(0,0) << " " \
+                << current_quat.at<float>(1,0) << " " \
+                << current_quat.at<float>(2,0) << " " \
                 << current_quat.at<float>(3,0) << std::endl;
         }
+
+        // Close the results file
         results_file.close();
-
-        return true;
-
-    }
-
-} // namespace SLucAM
-
-
-
-// -----------------------------------------------------------------------------
-// Implementation of functions to deal with the Pering Laboratory Dataset
-// -----------------------------------------------------------------------------
-namespace SLucAM {
-    
-    /*
-    * This function allows to load the PRD dataset. If it is the first time we
-    * load it, we use the images to load the keypoints and we save them in
-    * a set of files, otherwise we use directly the data in the files.
-    * IMPORTANT: in order to understand if the data are already extracted
-    * previously, this function verify if the folder ./cam0/extracted_data/
-    * already exsists inside the specified dataset_folder, so in case of
-    * errors, please delete that folder before to start this function.
-    */  
-    bool load_PRD_dataset(const std::string& dataset_folder, State& state) {
-
-        // Initialization
-        const std::string csv_filename = dataset_folder+"cam0/data.csv";
-        const std::string imgs_folder = dataset_folder+"cam0/data/";
-        const std::string extracted_data_folder = dataset_folder+"cam0/extracted_data/";
-        const std::string camera_filename = dataset_folder+"cameraInfo.txt";
-        std::string current_line, current_el_filename;
-        unsigned int start_str_pose;
-        unsigned int tot_n_points = 0;
-        cv::Mat current_img, K;
-        cv::Ptr<cv::Feature2D> orb_detector = cv::ORB::create();
-        std::vector<Measurement> measurements;
-
-        // Check if the data from images are already extracted
-        // (if it is not the first time we use this dataset)
-        bool already_extracted = false;
-        if(std::filesystem::is_directory(extracted_data_folder))
-            already_extracted = true;
-
-        // If the data from images are not already extracted, create
-        // the directory where to save the extracted data
-        if(!already_extracted)
-            std::filesystem::create_directory(extracted_data_folder);
-
-        // Load the camera matrix
-        if(!load_PRD_camera_matrix(camera_filename, K)) 
-            return false;
-
-        // Open the csv file
-        std::fstream csv_file;
-        csv_file.open(csv_filename);
-        if(csv_file.fail()) return false;
-
-        // Ignore the first line
-        std::getline(csv_file, current_line);
-
-        // Load all images (if already extracted load infos from file)
-        measurements.reserve(1600);
-        while(std::getline(csv_file, current_line)) {
-            
-            // Get the img filename
-            std::stringstream ss(current_line);
-            std::getline(ss, current_line, ',');
-            std::getline(ss, current_el_filename, ',');
-
-            // If the keypoints from the images are not already extracted then 
-            // load the image, detect keypoints and save results on a file, 
-            // otherwise load them from the files
-            std::vector<cv::KeyPoint> points;
-            cv::Mat descriptors;
-            if(!already_extracted) {
-                if(!load_image(imgs_folder+current_el_filename, current_img)) {
-                    csv_file.close();
-                    return false;
-                }
-                orb_detector->detectAndCompute(current_img, cv::Mat(), \
-                                                points, descriptors);
-                current_el_filename = current_el_filename.substr(0, current_el_filename.size()-3) \
-                                            + "yml";
-                if(!save_keypoints_PRD(extracted_data_folder+current_el_filename, points, descriptors))
-                    return false;
-            } else {
-                current_el_filename = current_el_filename.substr(0, current_el_filename.size()-3) \
-                                            + "yml";
-                if(!load_keypoints_PRD(extracted_data_folder+current_el_filename, points, descriptors))
-                    return false;
-            }
-            
-            // Create new measurement
-            measurements.emplace_back(Measurement(points, descriptors));
-
-            // Count the number of points in the current measurement
-            tot_n_points += points.size();
-
-        }
-        measurements.shrink_to_fit();
-
-        // Close the csv file
-        csv_file.close();
-
-        // Initialize the state
-        state = State(K, measurements, measurements.size(), tot_n_points);
-
-        return true;
-    }
-
-    /*
-    * This function allows to load the camera matrix formatted for PRD 
-    * dataset.
-    */
-    bool load_PRD_camera_matrix(const std::string& filename, cv::Mat& K) {
-
-        // Initialization 
-        K = cv::Mat::eye(3,3,CV_32F);
-        std::string current_line;
-
-        // Open the file
-        std::fstream file;
-        file.open(filename);
-        if(file.fail()) return false;
-
-        // Ignore the first 3 lines
-        std::getline(file, current_line);
-        std::getline(file, current_line);
-        std::getline(file, current_line);
-
-        // Read the focal length
-        std::getline(file, current_line);
-        std::stringstream ss_focal_length(current_line);
-        ss_focal_length >> K.at<float>(0,0) >> K.at<float>(1,1); 
-
-        // Ignore next line
-        std::getline(file, current_line);
-
-        // Read the principal point
-        std::getline(file, current_line);
-        std::stringstream ss_principal_point(current_line);
-        ss_principal_point >> K.at<float>(0,2) >> K.at<float>(1,2);
-
-        // Close the file
-        file.close();
-
-        return true;
-    }
-
-
-     /*
-    * This function save a set of keypoints and corresponding descriptors
-    * in a .yml file.
-    */
-    bool save_keypoints_PRD(const std::string& filename, \
-                            const std::vector<cv::KeyPoint>& points, \
-                            const cv::Mat& descriptors) {
-
-        // If the file already exists, delete it
-        if(std::filesystem::exists(filename))
-            std::filesystem::remove(filename);
-
-        // Open the file
-        cv::FileStorage file(filename, cv::FileStorage::WRITE);
-
-        // Save the infos
-        file << "keypoints" << points;
-        file << "descriptors" << descriptors;
-
-        // Close the file
-        file.release();
-        
-        return true;
-    }
-    
-
-    /*
-    * This function load a set of keypoints and corresponding descriptors
-    * from a .yml file
-    */
-    bool load_keypoints_PRD(const std::string& filename, \
-                            std::vector<cv::KeyPoint>& points, \
-                            cv::Mat& descriptors) {
-        
-        // Open the file
-        cv::FileStorage file(filename, cv::FileStorage::READ);
-
-        // Check validity
-        if(file["keypoints"].empty() || file["descriptors"].empty()) 
-            return false;
-
-        // Load the infos
-        file["keypoints"] >> points;
-        file["descriptors"] >> descriptors;
-
-        // Close the file
-        file.release();
-
-        return true;
-    }
-    
-} // namespace SLucAM
-
-
-
-// -----------------------------------------------------------------------------
-// Functions to deal with my Synthetic Dataset
-// -----------------------------------------------------------------------------
-namespace SLucAM {
-
-    /*
-    * Function to load my synthetic dataset. 
-    * IMPORTANT: this dataset contains the associations not done on images
-    * but on 3D points ids, so we need to deal with this in the system.
-    * Indeed in the vector associations it contains in position i, the list
-    * of the ids for each point in the measurement i (ordered in the same
-    * way of the points).
-    * (This dataset is useful for test)
-    */
-    bool load_synthetic_dataset(const std::string& dataset_folder, State& state, \
-                                std::vector<std::vector<unsigned int>>& associations) {
-
-        // Initialization
-        std::string camera_matrix_filename = dataset_folder + \
-                        "camera_parameters.dat";
-        std::string csv_filename = dataset_folder + "data.csv";
-        std::string current_filename, current_line;
-        cv::Mat K;
-        std::vector<Measurement> measurements;
-        std::fstream current_file;
-        
-        // Load the camera matrix
-        if(!load_synthetic_camera_matrix(camera_matrix_filename, K))
-            return false;
-        
-        // Open the csv file
-        std::fstream csv_file;
-        csv_file.open(csv_filename);
-        if(csv_file.fail()) return false;
-
-        // Load all measurements
-        measurements.reserve(12);
-        associations.reserve(12);
-        while(std::getline(csv_file, current_line)) {
-            
-            // Get the current filename
-            std::stringstream ss_current_line_csv_file(current_line);
-            ss_current_line_csv_file >> current_filename; 
-            ss_current_line_csv_file >> current_filename;
-            current_filename = dataset_folder+current_filename;
-
-            // Open the current file
-            current_file.open(current_filename);
-            if(current_file.fail()) return false;
-
-            // Ignore the first 7 lines
-            std::getline(current_file, current_line);
-            std::getline(current_file, current_line);
-            std::getline(current_file, current_line);
-            std::getline(current_file, current_line);
-            std::getline(current_file, current_line);
-            std::getline(current_file, current_line);
-            std::getline(current_file, current_line);
-
-            // Read all the points
-            std::vector<cv::KeyPoint> points;
-            std::vector<unsigned int> ground_truth_ids;
-            points.reserve(2000); ground_truth_ids.reserve(2000);
-            while(std::getline(current_file, current_line)) {
-
-                unsigned int gt_id;
-                float x, y;                
-                std::stringstream ss_current_line_points(current_line);
-                
-                ss_current_line_points >> gt_id >> x >> y;
-
-                points.emplace_back(cv::KeyPoint(cv::Point2f(x,y), 1));
-                ground_truth_ids.emplace_back(gt_id);
-                
-            }
-            points.shrink_to_fit(); ground_truth_ids.shrink_to_fit();
-
-            // Create new measurements
-            // IMPORTANT: we have no descriptors in this dataset
-            cv::Mat descriptors;
-            measurements.emplace_back(Measurement(points, descriptors));
-            associations.emplace_back(ground_truth_ids);
-
-            // Close the current file
-            current_file.close();
-
-        }
-        measurements.shrink_to_fit();
-        associations.shrink_to_fit();
-
-        // Close the csv file
-        csv_file.close();
-
-        // Initialize the state
-        state = State(K, measurements, measurements.size(), 10000);
-
-        return true;
-
-    }
-
-
-    /*
-    * Function to load the K matrix for my synthetic dataset.
-    */
-    bool load_synthetic_camera_matrix(const std::string& filename, cv::Mat& K) {
-
-        // Initialization
-        K = cv::Mat::zeros(3,3,CV_32F);
-        std::string current_line;
-
-        // Open the file
-        std::fstream file;
-        file.open(filename);
-        if(file.fail()) return false;
-
-        // Ignore the first line;
-        std::getline(file, current_line);
-
-        // Load the first row
-        std::getline(file, current_line);
-        std::stringstream ss1(current_line);
-        ss1 >> K.at<float>(0,0) >> K.at<float>(0,1) >> K.at<float>(0,2);
-
-        // Load the second row
-        std::getline(file, current_line);
-        std::stringstream ss2(current_line);
-        ss2 >> K.at<float>(1,0) >> K.at<float>(1,1) >> K.at<float>(1,2);
-
-        // Load the third row
-        std::getline(file, current_line);
-        std::stringstream ss3(current_line);
-        ss3 >> K.at<float>(2,0) >> K.at<float>(2,1) >> K.at<float>(2,2);
-
-        // Close the file
-        file.close();
-
-        return true;
-
-    }
-
-
-    /*
-    * This function load the real position of the 3D points of the synthetic
-    * dataset. In particular in position i of the vector we have the position
-    * of the landmark with the idx i.
-    */
-    bool load_3dpoints_ground_truth(const std::string& filename, \
-                                    std::vector<cv::Point3f>& gt_points) {
-        
-        // Initialization
-        std::string current_line;
-        unsigned int currend_idx;
-        gt_points.reserve(50000);
-
-        // Open the file
-        std::fstream file;
-        file.open(filename);
-        if(file.fail()) return false;
-
-        // Ignore the first line
-        std::getline(file, current_line);
-
-        // Load each line
-        while(std::getline(file, current_line)) {
-            float x, y, z;
-            std::stringstream ss_current_line(current_line);
-            ss_current_line >> currend_idx >> x >> y >> z;
-            gt_points.emplace_back(cv::Point3f(x,y,z));
-        }
-        gt_points.shrink_to_fit();
-
-        // Close the file
-        file.close();
 
         return true;
 

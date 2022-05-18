@@ -79,8 +79,6 @@ namespace SLucAM {
     * between them. If no such measurement is found then is returned false.  
     */
     bool State::initializeState(Matcher& matcher, \
-                                const unsigned int n_iters_ransac, \
-                                const float& parallax_threshold, \
                                 const bool verbose) {
 
         // If we do not have enough measurements refuse initialization
@@ -105,8 +103,7 @@ namespace SLucAM {
             const Measurement& meas2 = getNextMeasurement();
             initialization_performed = initialize(meas1, meas2, matcher, \
                         K, predicted_pose, matches, matches_filter, \
-                        triangulated_points, n_iters_ransac, \
-                        parallax_threshold, verbose);
+                        triangulated_points, verbose);
             
             if(verbose && initialization_performed) {
                 if(!visualize_matches(meas1, meas2, matches, matches_filter)) {
@@ -176,11 +173,8 @@ namespace SLucAM {
     */
     bool State::integrateNewMeasurement(Matcher& matcher, \
                                         const bool& triangulate_new_points, \
-                                        const unsigned int& local_map_size, \
                                         const float& kernel_threshold_POSIT, \
                                         const float& inliers_threshold_POSIT, \
-                                        const float& parallax_threshold, \
-                                        const float& new_landmark_threshold, \
                                         const bool verbose) {
 
         // If we have no more measurement to integrate, return error
@@ -215,19 +209,19 @@ namespace SLucAM {
         addPointsAssociations(this->_next_measurement_idx-1, points_associations, \
                                 this->_measurements, this->_keypoints);
 
-        // Check that the new measurement can be used as a good keyframe, and if
+        // Check that the new measurement must be used as keyframe, and if
         // yes, save it
         if(!this->canBeSpawnedAsKeyframe(predicted_pose, points_associations, verbose)) {
             if(verbose) std::cout << std::endl << std::endl;
-            return false;
+            return true;
         }
         if(verbose) std::cout << std::endl << "\t";
         addKeyFrame(this->_next_measurement_idx-1, this->_poses.size()-1, \
                 this->_keyframes.size()-1, verbose);       
 
         // If requested add new landmarks triangulating 
-        // new matches between the last integrated keyframe and the last n 
-        // (specified by local_map_size) keyframes
+        // new matches between the last integrated keyframe and
+        // all the local keyframes
         if(triangulate_new_points) {
             
             triangulateNewPoints(this->_keyframes, \

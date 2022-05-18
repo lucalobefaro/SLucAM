@@ -21,10 +21,14 @@ using namespace std;
 namespace SLucAM {
 
     /*
-    * Default constructor of the Matcher class.
+    * Default constructor of the Matcher class. If we use ORB features we use
+    * NORM_HAMMING distance for matching, otherwise we use NORM_L2.
     */
-    Matcher::Matcher() {
-        this->_bf_matcher = cv::BFMatcher::create(cv::NORM_HAMMING, true);
+    Matcher::Matcher(const std::string& feat_types) {
+        if(feat_types == "orb")
+            this->_bf_matcher = cv::BFMatcher::create(cv::NORM_HAMMING, true);
+        else
+            this->_bf_matcher = cv::BFMatcher::create(cv::NORM_L2, true);
     }
 
 
@@ -39,65 +43,21 @@ namespace SLucAM {
                                 const Measurement& meas2,  
                                 std::vector<cv::DMatch>& matches, \
                                 const float& match_threshold) {
-                                    
-        // --- DEFAULT MATCHER ---
-
-        if(this->_use_default_matcher) {
-            std::vector<cv::DMatch> unfiltered_matches;
-            this->_bf_matcher->match(meas1.getDescriptors(), \
-                                    meas2.getDescriptors(), \
-                                    unfiltered_matches);
-            
-            // Filter matches
-            matches.reserve(unfiltered_matches.size());
-            for(auto& m : unfiltered_matches) {
-                if(m.distance <= match_threshold) 
-                    matches.emplace_back(m);
-            }
-            matches.shrink_to_fit();
-
-            return;
-        }
-
-        // --- POINTS IDS MATCHER ---
-        // Initialization
-        unsigned int meas1_idx = meas1.getId(); 
-        unsigned int meas2_idx = meas2.getId();
-        const std::vector<unsigned int>& gt_points_meas1 = \
-                this->_points_ids[meas1_idx];
-        const std::vector<unsigned int>& gt_points_meas2 = \
-                this->_points_ids[meas2_idx];
-        unsigned int n_points_meas1 = meas1.getPoints().size();
-        unsigned int n_points_meas2 = meas2.getPoints().size();
-        unsigned int current_gt_meas1, current_gt_meas2;
-
-        matches.reserve(n_points_meas1);
-        for(unsigned int current_p_meas1=0; \
-                current_p_meas1<n_points_meas1; \
-                ++current_p_meas1) {
     
-            // Get the current point grounf truth id
-            current_gt_meas1 = gt_points_meas1[current_p_meas1];
+        std::vector<cv::DMatch> unfiltered_matches;
+        this->_bf_matcher->match(meas1.getDescriptors(), \
+                                meas2.getDescriptors(), \
+                                unfiltered_matches);
 
-            for(unsigned int current_p_meas2=0; \
-                current_p_meas2<n_points_meas2; \
-                ++current_p_meas2) {
-            
-                // Get the current point grounf truth id
-                current_gt_meas2 = gt_points_meas2[current_p_meas2];
-
-                // If they match, save the match and go to the next 
-                // point
-                if(current_gt_meas1 == current_gt_meas2) {
-                    matches.emplace_back();
-                    matches.back().queryIdx = current_p_meas1;
-                    matches.back().trainIdx = current_p_meas2;
-                    break;
-                }
-
-            }
+        // Filter matches
+        matches.reserve(unfiltered_matches.size());
+        for(auto& m : unfiltered_matches) {
+            if(m.distance <= match_threshold) 
+                matches.emplace_back(m);
         }
         matches.shrink_to_fit();
+
+        return;
 
     }
 

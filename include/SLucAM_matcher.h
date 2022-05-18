@@ -25,24 +25,13 @@ namespace SLucAM {
 
     /*
     * This class represent a matcher that we need to match points between
-    * two images. By default it is initialized with a BFMatcher (in this case
-    * we will use it when we need to match two measurements) or with
-    * a list of ids.
-    * In the last case we have in position i, the list of ids for each point
-    * in the measurement i. In this way we can use this ids to understand
-    * which measured points referes to the same 3D world point of another 
-    * measured point.
+    * two images. 
     */
     class Matcher {
 
     public:
 
-        Matcher();
-
-        Matcher(std::vector<std::vector<unsigned int>>& points_ids) :\
-            _points_ids(points_ids),
-            _use_default_matcher(false)
-        {};
+        Matcher(const std::string& feat_types);
 
         void match_measurements(const Measurement& meas1, \
                                 const Measurement& meas2,  
@@ -50,18 +39,14 @@ namespace SLucAM {
                                 const float& match_threshold=30);   // match_threshold=15 for ANMS, 30 for ORB
 
         static int compute_descriptors_distance(const cv::Mat& d1, \
-                                            const cv::Mat& d2);
+                                                const cv::Mat& d2);
         
         static int compute_descriptors_distance(const cv::Mat& d1, \
-                                            const std::vector<cv::Mat>& d2_set);
+                                                const std::vector<cv::Mat>& d2_set);
 
     private:
 
-        bool _use_default_matcher = true;
-
         cv::Ptr<cv::BFMatcher> _bf_matcher;
-
-        std::vector<std::vector<unsigned int>> _points_ids;
 
     }; // class Matcher
 
