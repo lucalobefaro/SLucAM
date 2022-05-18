@@ -9,7 +9,7 @@ n_keyframes = 320;
 f = figure('visible', 'off');
 
 % Plot all the keyframes
-for i = 300:n_keyframes
+for i = 0:n_keyframes
     
     % Plot the current keyframe
     plot_keyframe(folder, i);
