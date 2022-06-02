@@ -238,6 +238,9 @@ namespace SLucAM {
 
         }
 
+        // Local Bundle Adjustment
+        performLocalBA(5, false);
+
         return true;
 
     }
@@ -306,6 +309,7 @@ namespace SLucAM {
             ++vertex_id;
 
             // --- Set edges keyframe -> landmark ---
+            const std::vector<cv::KeyPoint>& current_meas_points = current_meas.getPoints();
             std::vector<std::pair<unsigned int, unsigned int>> current_points_associations;
             this->_measurements[current_keyframe.getMeasIdx()].getPointsAssociations(current_points_associations);
             const unsigned int n_associations = current_points_associations.size();
@@ -319,7 +323,7 @@ namespace SLucAM {
                 const unsigned int& landmark_idx = current_association.second;
 
                 // Take the measured point of this association
-                const cv::KeyPoint& z = current_meas.getPoints()[point_2d_idx];
+                const cv::KeyPoint& z = current_meas_points[point_2d_idx];
 
                 // Create the edge
                 g2o::EdgeSE3ProjectXYZ* e = new g2o::EdgeSE3ProjectXYZ();
@@ -617,7 +621,7 @@ namespace SLucAM {
         for(auto& kp: local_keypoints_set)
             this->_keypoints[kp].updateDescriptor(this->_measurements);
 
-        // Compute the local keypoints and keyframes of the keyframe
+        // Compute the local keypoints and keyframes of the new keyframe
         std::vector<unsigned int> local_keyframes;
         std::map<unsigned int, unsigned int> counter; // <keyframe,#occurences of points>
         for(const auto& el: local_keypoints_set) {
@@ -641,7 +645,7 @@ namespace SLucAM {
                     .getObservedPointsSet(local_keypoints_set);
         }
 
-        // Add a new keyframe
+        // Add the new keyframe
         this->_keyframes.emplace_back(meas_idx, pose_idx, \
                                         std::vector<unsigned int>(local_keypoints_set.begin(), \
                                                             local_keypoints_set.end()), \
@@ -695,7 +699,7 @@ namespace SLucAM {
         }
 
         // Check condition 2
-        if(this->_from_last_keyframe < 5) {
+        if(this->_from_last_keyframe < 20) {
             return false;
         }
 
@@ -868,8 +872,7 @@ namespace SLucAM {
 
     /* 
     * This function add new landmarks triangulating new matches between the last 
-    * integrated keyframe and the last n (specified by triangulation_window) 
-    * keyframes
+    * integrated keyframe and all keyframes in its local map
     */
     void State::triangulateNewPoints(std::vector<Keyframe>& keyframes, \
                                     std::vector<Keypoint>& keypoints, \
@@ -884,7 +887,7 @@ namespace SLucAM {
         const float matching_distance_threshold = 10;   // 8 for ANMS, 12 for ORB
         unsigned int n_triangulated = 0;
 
-        // Take the reference to the last integrated keyframe
+        // Take the reference to the last integrated keyframe and its local map
         const unsigned int keyframe2_idx = keyframes.size()-1;
         Keyframe& last_keyframe = keyframes[keyframe2_idx];
         const Measurement& meas2 = measurements[last_keyframe.getMeasIdx()];
@@ -1193,7 +1196,7 @@ namespace SLucAM {
         const unsigned int image_height = 2*K.at<float>(1,2);
         float kp_cam_x, kp_cam_y, kp_cam_z, kp_img_x, kp_img_y, iz;
         const unsigned int descriptors_distance_threshold = 100;
-        const float points_distance_threshold = 30;
+        const float points_distance_threshold = 10;
         int current_distance, best_distance;
         unsigned int best_row_idx;
 

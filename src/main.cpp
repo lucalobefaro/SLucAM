@@ -26,12 +26,14 @@ int main() {
     const bool verbose = true;
     const bool save_exploration = true;
 
-    //std::string features = "orb";
-    std::string features = "superpoint";
+    std::string features = "orb";
+    //std::string features = "superpoint";
     
     SLucAM::State state;
-    std::string dataset_folder = "../data/datasets/tum_xyz/";
-    //std::string dataset_folder = "../data/datasets/tum_desk/"
+    std::string dataset_folder = "../data/datasets/tum_dataset/";
+    //std::string dataset_folder = "../data/datasets/tum_xyz/";
+    //std::string dataset_folder = "../data/datasets/tum_desk/";
+    //std::string dataset_folder = "../data/datasets/tum_dataset_teddy/";
     const std::string results_folder = "../results/";
 
     const unsigned int kernel_threshold_POSIT = 1000;   // 1000 => 33 pixels (?)
@@ -110,15 +112,16 @@ int main() {
 
 
 
-    /* -----------------------------------------------------------------------------
+    // -----------------------------------------------------------------------------
     // PERFORM FINAL BUNDLE ADJUSTMENT
     // -----------------------------------------------------------------------------
     state.performTotalBA(10, verbose);
     if(save_exploration) {
         SLucAM::save_current_state(results_folder+"frame"+std::to_string(step)+"_", state);
+        std::cout << "Last state saved is: " << results_folder+"frame"+std::to_string(step)+"_*" << std::endl;
         step++;
     }
-    */
+
 
 
     // -----------------------------------------------------------------------------

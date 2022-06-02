@@ -167,7 +167,7 @@ namespace SLucAM {
         measurements.reserve(1500);
         while(std::getline(imgs_names_file, current_line)) {
 
-            if(i==50) break;
+            if(i==1000) break;
             
             // Get the current filename
             std::stringstream ss_current_line_csv_file(current_line);
@@ -248,11 +248,11 @@ namespace SLucAM {
         std::getline(imgs_names_file, current_line);
 
         // Load all measurements
-        int i = 0;
+        //int i = 0;
         measurements.reserve(1500);
         while(std::getline(imgs_names_file, current_line)) {
 
-            if(i==200) break;
+            //if(i==200) break;
             
             // Get the current filename
             std::stringstream ss_current_line_csv_file(current_line);
@@ -311,7 +311,7 @@ namespace SLucAM {
             // Memorize the name of the image
             measurements.back().setImgName(current_img_filename);
 
-            ++i;
+            //++i;
 
         }
         measurements.shrink_to_fit();
