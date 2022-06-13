@@ -392,9 +392,9 @@ if __name__ == '__main__':
       help='Images to skip if input is movie or directory (default: 1).')
   parser.add_argument('--show_extra', action='store_true',
       help='Show extra debug outputs (default: False).')
-  parser.add_argument('--H', type=int, default=120,
+  parser.add_argument('--H', type=int, default=480,
       help='Input image height (default: 120).')
-  parser.add_argument('--W', type=int, default=160,
+  parser.add_argument('--W', type=int, default=640,
       help='Input image width (default:160).')
   parser.add_argument('--display_scale', type=int, default=2,
       help='Factor to scale output visualization (default: 2).')
@@ -467,6 +467,7 @@ if __name__ == '__main__':
         f.write(str(el))
         f.write(" ")
       f.write("\n")
+    f.close()
     
     i+=1
     print("\tFrame " + str(i) + " extracted")

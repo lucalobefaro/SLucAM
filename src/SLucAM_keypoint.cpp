@@ -10,6 +10,7 @@
 #include <SLucAM_matcher.h>
 #include <algorithm>
 #include <iostream>
+#include <limits>
 
 
 
@@ -28,10 +29,10 @@ namespace SLucAM {
 
         // Initialization
         const unsigned int n_observers = this->_observers.size();
-        std::vector<std::vector<int>> distances(n_observers, \
-                                            std::vector<int>(n_observers, 0));
-        int best_distance = INT_MAX;
-        int current_distance;
+        std::vector<std::vector<float>> distances(n_observers, \
+                                            std::vector<float>(n_observers, 0));
+        float best_distance = std::numeric_limits<float>::max();
+        float current_distance;
         unsigned int best_idx = 0;
 
         // Compute mutual distances
@@ -46,7 +47,7 @@ namespace SLucAM {
         // Save as representative descriptor the descriptor with the
         // lower median distance
         for(unsigned int i=0; i<n_observers; ++i){
-            std::vector<int>& row = distances[i];
+            std::vector<float>& row = distances[i];
             std::sort(row.begin(), row.end());
             current_distance = row[n_observers/2];
             if(current_distance < best_distance) {

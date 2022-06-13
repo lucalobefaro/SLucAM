@@ -36,17 +36,23 @@ namespace SLucAM {
         void match_measurements(const Measurement& meas1, \
                                 const Measurement& meas2,  
                                 std::vector<cv::DMatch>& matches, \
-                                const float& match_threshold=30);   // match_threshold=15 for ANMS, 30 for ORB
+                                const bool& match_th_high=true);
 
-        static int compute_descriptors_distance(const cv::Mat& d1, \
+        static float compute_descriptors_distance(const cv::Mat& d1, \
                                                 const cv::Mat& d2);
         
-        static int compute_descriptors_distance(const cv::Mat& d1, \
+        static float compute_descriptors_distance(const cv::Mat& d1, \
                                                 const std::vector<cv::Mat>& d2_set);
+
+        static float get_match_th_max() { return Matcher::_match_th_max; };
 
     private:
 
         cv::Ptr<cv::BFMatcher> _bf_matcher;
+        inline static bool _l2norm_dist = false;
+        inline static float _match_th_high;     // Use this when you can handle outliers
+        inline static float _match_th_low;      // Use this otherwise
+        inline static float _match_th_max;      // Use this to have a max threshold for descriptors matching
 
     }; // class Matcher
 

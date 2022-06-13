@@ -183,7 +183,7 @@ namespace SLucAM {
         const cv::Mat P2 = compute_projection_matrix(pose2, K);
         float current_cos_parallax, imx, imy, invz;
         cv::Mat d1, d2;
-        const float reprojection_threshold = 2;
+        const float reprojection_threshold = 4;
         const float& fx = K.at<float>(0,0);
         const float& fy = K.at<float>(1,1);
         const float& cx = K.at<float>(0,2);

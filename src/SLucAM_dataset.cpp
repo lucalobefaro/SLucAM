@@ -31,6 +31,7 @@ namespace SLucAM {
     */
     bool load_my_dataset(const std::string& dataset_folder, State& state, \
                         const cv::Ptr<cv::Feature2D>& detector, \
+                        const unsigned int keyframe_density, \
                         const bool verbose) {
 
         // Initialization
@@ -87,7 +88,7 @@ namespace SLucAM {
 
         // Initialize the state
         state = State(K, distorsion_coefficients, measurements, \
-                        measurements.size(), 5000);
+                        measurements.size()+1, 10000, keyframe_density);
 
         if(verbose) {
             std::cout << "Loaded " << measurements.size() << " measurements" \
@@ -139,6 +140,7 @@ namespace SLucAM {
 
     bool load_TUM_dataset(const std::string& dataset_folder, State& state, \
                             FeatureExtractor& feature_extractor, \
+                            const unsigned int keyframe_density, \
                             const bool verbose) {
 
         // Initialization
@@ -151,7 +153,7 @@ namespace SLucAM {
         // Load the camera matrix
         if(!load_TUM_camera_matrix(camera_matrix_filename, K, distorsion_coefficients))
             return false;
-
+        
         // Open the file containing the ordered names of the images
         std::fstream imgs_names_file;
         imgs_names_file.open(imgs_names_filename);
@@ -164,10 +166,10 @@ namespace SLucAM {
 
         // Load all measurements
         int i = 0;
-        measurements.reserve(1500);
+        measurements.reserve(4000);
         while(std::getline(imgs_names_file, current_line)) {
 
-            if(i==1000) break;
+            //if(i==300) break;
             
             // Get the current filename
             std::stringstream ss_current_line_csv_file(current_line);
@@ -183,7 +185,7 @@ namespace SLucAM {
             std::vector<cv::KeyPoint> points;
             cv::Mat descriptors;
             feature_extractor.extract_features(current_img, points, descriptors);
-            
+                        
             // Undistort keypoints
             std::vector<cv::KeyPoint> undistorted_points;
             undistort_keypoints(points, undistorted_points, \
@@ -206,7 +208,7 @@ namespace SLucAM {
 
         // Initialize the state
         state = State(K, distorsion_coefficients, measurements, \
-                        measurements.size(), 50000);
+                        measurements.size()+1, 10000, keyframe_density);
 
         if(verbose) {
             std::cout << "Loaded " << measurements.size() << " measurements" \
@@ -222,6 +224,7 @@ namespace SLucAM {
 
     bool load_preextracted_TUM_dataset(const std::string& dataset_folder, \
                             const std::string& features_folder, State& state, \
+                            const unsigned int keyframe_density, \
                             const bool verbose) {
         
         // Initialization
@@ -248,11 +251,11 @@ namespace SLucAM {
         std::getline(imgs_names_file, current_line);
 
         // Load all measurements
-        //int i = 0;
-        measurements.reserve(1500);
+        int i = 0;
+        measurements.reserve(4000);
         while(std::getline(imgs_names_file, current_line)) {
 
-            //if(i==200) break;
+            //if(i==300) break;
             
             // Get the current filename
             std::stringstream ss_current_line_csv_file(current_line);
@@ -305,13 +308,19 @@ namespace SLucAM {
                 ++r;
             }
 
+            // Undistort keypoints
+            std::vector<cv::KeyPoint> undistorted_points;
+            undistort_keypoints(points, undistorted_points, \
+                                distorsion_coefficients, K);
+
             // Create new measurement
-            measurements.emplace_back(Measurement(points, descriptors));
+            measurements.emplace_back(Measurement(undistorted_points, \
+                                        descriptors));
 
             // Memorize the name of the image
             measurements.back().setImgName(current_img_filename);
 
-            //++i;
+            ++i;
 
         }
         measurements.shrink_to_fit();
@@ -321,7 +330,7 @@ namespace SLucAM {
 
         // Initialize the state
         state = State(K, distorsion_coefficients, measurements, \
-                        measurements.size(), 50000);
+                        measurements.size()+1, 10000, keyframe_density);
 
         if(verbose) {
             std::cout << "Loaded " << measurements.size() << " measurements" \
@@ -361,10 +370,11 @@ namespace SLucAM {
 
 
 
-    bool save_TUM_results(const std::string& dataset_folder, const State& state) {
+    bool save_TUM_results(const std::string& dataset_folder, const std::string& features, \
+                            const State& state) {
 
         // Initialization
-        std::string results_filename = dataset_folder + "SLucAM_results.txt";
+        std::string results_filename = dataset_folder + "SLucAM_results_" + features + ".txt";
         std::string current_line;
         const std::vector<Keyframe>& keyframes = state.getKeyframes();
         const std::vector<cv::Mat>& poses = state.getPoses();
@@ -502,7 +512,7 @@ namespace SLucAM {
 
         // Write the last pose (only if it is not the pose of the last 
         // keyframe)
-        if(keyframes.back().getMeasIdx() != poses.size()-1) {
+        if(keyframes.back().getPoseIdx() != poses.size()-1) {
             const cv::Mat& p = poses.back();
             f << std::endl \
                 << p.at<float>(0,3) << "\t" << p.at<float>(1,3) << "\t" << p.at<float>(2,3) << "\t" \

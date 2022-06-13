@@ -27,6 +27,7 @@
 namespace SLucAM {
     bool load_my_dataset(const std::string& dataset_folder, State& state, \
                             const cv::Ptr<cv::Feature2D>& detector, \
+                            const unsigned int keyframe_density, \
                             const bool verbose=false);
     bool load_camera_matrix(const std::string& filename, cv::Mat& K, \
                             cv::Mat& distorsion_coefficients);
@@ -40,13 +41,16 @@ namespace SLucAM {
 namespace SLucAM {
     bool load_TUM_dataset(const std::string& dataset_folder, State& state, \
                             FeatureExtractor& feature_extractor, \
+                            const unsigned int keyframe_density, \
                             const bool verbose=false);
     bool load_preextracted_TUM_dataset(const std::string& dataset_folder, \
                             const std::string& features_folder, State& state, \
+                            const unsigned int keyframe_density, \
                             const bool verbose=false);
     bool load_TUM_camera_matrix(const std::string& filename, cv::Mat& K, \
                                 cv::Mat& distorsion_coefficients);
-    bool save_TUM_results(const std::string& dataset_folder, const State& state);
+    bool save_TUM_results(const std::string& dataset_folder, const std::string& features, \
+                            const State& state);
 } // namespace SLucAM
 
 

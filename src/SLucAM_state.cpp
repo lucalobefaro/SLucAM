@@ -20,6 +20,7 @@
 #include <iostream>
 #include <map>
 #include <set>
+#include <limits>
 
 
 
@@ -31,9 +32,11 @@ namespace SLucAM {
     /*
     * Base constructor.
     */
-    State::State() {
+    State::State(const unsigned int keyframe_density) {
         this->_next_measurement_idx = 0;
+        this->_from_last_keyframe = 0;
         this->_distorsion_coefficients = cv::Mat();
+        this->_keyframe_density = keyframe_density;
     }
 
 
@@ -44,8 +47,9 @@ namespace SLucAM {
     */
     State::State(cv::Mat& K, std::vector<Measurement>& measurements, \
                 const unsigned int expected_poses, \
-                const unsigned int expected_landmarks) 
-        : State() {
+                const unsigned int expected_landmarks, \
+                const unsigned int keyframe_density) 
+        : State(keyframe_density) {
         
         this->_K = K;
         this->_measurements = measurements;
@@ -63,8 +67,9 @@ namespace SLucAM {
     State::State(cv::Mat& K, cv::Mat& distorsion_coefficients, \
                 std::vector<Measurement>& measurements, \
                 const unsigned int expected_poses, \
-                const unsigned int expected_landmarks)  
-        : State(K, measurements, expected_poses, expected_landmarks) {
+                const unsigned int expected_landmarks, \
+                const unsigned int keyframe_density)  
+        : State(K, measurements, expected_poses, expected_landmarks, keyframe_density) {
 
         this->_distorsion_coefficients = distorsion_coefficients;
 
@@ -95,15 +100,23 @@ namespace SLucAM {
         std::vector<unsigned int> matches_filter;
 
         // Take the first measurement
-        const Measurement& meas1 = getNextMeasurement();
+        Measurement& meas1 = getFirstMeasurement();
 
         // While a good measurement couple is not found try to find it
+        unsigned int n_meas_analyzed = 0;
         while(!initialization_performed && (reaminingMeasurements() != 0)) {
             
+            n_meas_analyzed++;
             const Measurement& meas2 = getNextMeasurement();
             initialization_performed = initialize(meas1, meas2, matcher, \
                         K, predicted_pose, matches, matches_filter, \
                         triangulated_points, verbose);
+                
+            if(n_meas_analyzed > 15 && !initialization_performed) {
+                meas1 = getFirstMeasurement();
+                n_meas_analyzed = 0;
+                if(verbose) std::cout << "=> FIRST MEAS DISCARDED" << std::endl;
+            }
             
             if(verbose && initialization_performed) {
                 if(!visualize_matches(meas1, meas2, matches, matches_filter)) {
@@ -679,7 +692,7 @@ namespace SLucAM {
     *   1. The new measurement has more than 50 points associations (inliers) 
     *       but, in order to track fast rotations, if the rotation is "too high"
     *       we need at least 20 points associations
-    *   2. More than 10 frames have passed from the last keyframe insertion or 
+    *   2. More than 20 frames have passed from the last keyframe insertion or 
     *       we have a "high" rotation angle (in order to not loose tracking
     *       when we rotate fast in new parts of the map where we do not have
     *       keypoints for optimization)
@@ -694,12 +707,12 @@ namespace SLucAM {
         const float poses_angle = compute_poses_angle(pose, last_keyframe_pose);
 
         // Check condition 1
-        if(points_associations.size() < 50) {
-            return false;
+        if(points_associations.size() < 100) {
+            return true;
         }
 
         // Check condition 2
-        if(this->_from_last_keyframe < 20) {
+        if(this->_from_last_keyframe < this->_keyframe_density && poses_angle < 0.15) {
             return false;
         }
 
@@ -814,7 +827,7 @@ namespace SLucAM {
                                                 keypoints, \
                                                 K, \
                                                 kernel_threshold_POSIT, \
-                                                inliers_threshold_POSIT, 5);
+                                                inliers_threshold_POSIT, 10);
         if(verbose) {
             std::cout << "(" << n_inliers << " inliers), ";
         }
@@ -855,6 +868,11 @@ namespace SLucAM {
             std::cout << "(" << n_inliers << " inliers) ";
         }
 
+        // Tracking loose
+        if(n_inliers < 10) {
+            return false;
+        }
+
         // Mantain only the inliers
         points_associations_inliers.reserve(n_inliers);
         n_unfiltered_associations = points_associations.size();
@@ -884,7 +902,6 @@ namespace SLucAM {
         
         // Initialization
         const unsigned int& n_keyframes = keyframes.size()-1;
-        const float matching_distance_threshold = 10;   // 8 for ANMS, 12 for ORB
         unsigned int n_triangulated = 0;
 
         // Take the reference to the last integrated keyframe and its local map
@@ -908,21 +925,13 @@ namespace SLucAM {
 
             // Matches the two keyframes
             std::vector<cv::DMatch> matches;
-            matcher.match_measurements(meas1, meas2, matches, matching_distance_threshold);
+            matcher.match_measurements(meas1, meas2, matches, false);
             const unsigned int n_matches = matches.size();
 
             // If we have no match just ignore this measurement
             if(n_matches == 0) {
                 continue;
             }
-
-            // Check that the poses have enough parallax
-            std::vector<unsigned int> common_keypoints_ids;
-            meas1.getCommonKeypoints(meas2, common_keypoints_ids);
-            if(common_keypoints_ids.size() < 3)
-                continue;
-            if(computeParallax(pose1, pose2, keypoints, common_keypoints_ids) < 0.999)
-                continue;
 
             // Build a matches filter, to take into account only those
             // matched 2D points for which we don't have already a 3D point associated
@@ -1195,9 +1204,9 @@ namespace SLucAM {
         const unsigned int image_width = 2*K.at<float>(0,2);
         const unsigned int image_height = 2*K.at<float>(1,2);
         float kp_cam_x, kp_cam_y, kp_cam_z, kp_img_x, kp_img_y, iz;
-        const unsigned int descriptors_distance_threshold = 100;
+        const float descriptors_distance_threshold = Matcher::get_match_th_max();
         const float points_distance_threshold = 10;
-        int current_distance, best_distance;
+        float current_distance, best_distance;
         unsigned int best_row_idx;
 
         // Some reference to save time
@@ -1233,7 +1242,7 @@ namespace SLucAM {
 
         // Build the associations matrix where a row contains all the 
         // distances from a given 3D point to all 2D points in the measurement
-        std::vector<std::vector<int>> associations_matrix;
+        std::vector<std::vector<float>> associations_matrix;
         std::map<unsigned int, unsigned int> row2keypointidx;
         unsigned int current_row = 0;
         associations_matrix.reserve(n_local_keypoints);
@@ -1272,7 +1281,7 @@ namespace SLucAM {
             // associations matrix by building a vector of scores,
             // one element for each 2D point in the image
             row2keypointidx[current_row++] = current_3d_p_idx;
-            std::vector<int> current_associations;
+            std::vector<float> current_associations;
             current_associations.reserve(n_points_2d);
             for(unsigned int p_idx=0; p_idx<n_points_2d; ++p_idx) {
                 
@@ -1285,7 +1294,7 @@ namespace SLucAM {
                                                 current_2d_point.pt.y) \
                     > points_distance_threshold) {
                     
-                    current_associations.emplace_back(INT_MAX);
+                    current_associations.emplace_back(std::numeric_limits<float>::max());
                 
                 } else {
 
@@ -1313,7 +1322,7 @@ namespace SLucAM {
             if(associated_2d_points[p_2d_idx]) continue;
             
             // Set the current best distance to max and best_row_idx to invalid
-            best_distance = INT_MAX;
+            best_distance = std::numeric_limits<float>::max();
             best_row_idx = -1;
             
             // Search for the best 3D point

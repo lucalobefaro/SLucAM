@@ -1,8 +1,8 @@
 % Initialization
 warning('off');
-folder = "../results/";
+folder = "../results/fr2_pioneer_360_results_superpoint/";
 results_folder = "./images/";
-n_keyframes = 1000;
+n_keyframes = 4000;
 
 %{
 % create an invisible figure
@@ -32,5 +32,5 @@ disp("DONE!");
 
 %
 f = figure('visible', 'on');
-plot_keyframe(folder,900);
+plot_keyframe(folder,59);
 %

@@ -20,27 +20,36 @@ using namespace std;
 
 int main() {
 
+    //std::string features = "orb";
+    //std::string features = "superpoint";
+    std::string features = "lf_net";
+    //std::string dataset_name = "fr1_xyz";
+    //std::string dataset_name = "fr2_xyz";
+    std::string dataset_name = "fr2_desk";
+    //std::string dataset_name = "fr1_desk";
+    //std::string dataset_name = "fr3_structure_texture_far";
+    //std::string dataset_name = "fr3_structure_texture_near";
+    //std::string dataset_name = "fr3_nostructure_texture_near";
+
     // -----------------------------------------------------------------------------
     // Create Environment and set variables
     // -----------------------------------------------------------------------------
     const bool verbose = true;
     const bool save_exploration = true;
-
-    std::string features = "orb";
-    //std::string features = "superpoint";
-    
-    SLucAM::State state;
-    std::string dataset_folder = "../data/datasets/tum_dataset/";
-    //std::string dataset_folder = "../data/datasets/tum_xyz/";
-    //std::string dataset_folder = "../data/datasets/tum_desk/";
-    //std::string dataset_folder = "../data/datasets/tum_dataset_teddy/";
-    const std::string results_folder = "../results/";
-
-    const unsigned int kernel_threshold_POSIT = 1000;   // 1000 => 33 pixels (?)
-    const float inliers_threshold_POSIT = kernel_threshold_POSIT;
-    
     unsigned int step = 0;
-    std::vector<std::vector<unsigned int>> associations;
+    const unsigned int kernel_threshold_POSIT = 1000;
+    const float inliers_threshold_POSIT = kernel_threshold_POSIT;
+
+    std::string dataset_folder = "../data/datasets/" + dataset_name + "/";
+    const std::string results_folder = "../results/" + dataset_name + \
+                                        "_results_" + features + "/";
+
+    // Determine if the dataset is slow or fast and set the density of keyframes
+    unsigned int keyframes_density = 20;
+    if(dataset_name == "fr1_desk")
+        keyframes_density = 5;
+
+    SLucAM::State state(keyframes_density);
 
     
 
@@ -51,9 +60,9 @@ int main() {
     cout << endl << "--- LOADING THE DATASET ---" << endl;
     bool loaded;
     if(features == "orb")
-        loaded = SLucAM::load_TUM_dataset(dataset_folder, state, feature_extractor, verbose);
-    else if(features == "superpoint")
-        loaded = SLucAM::load_preextracted_TUM_dataset(dataset_folder, features+"/", state, verbose);
+        loaded = SLucAM::load_TUM_dataset(dataset_folder, state, feature_extractor, keyframes_density, verbose);
+    else if(features == "superpoint" || features == "lf_net")
+        loaded = SLucAM::load_preextracted_TUM_dataset(dataset_folder, features+"/", state, keyframes_density, verbose);
     else {
         std::cout << "ERROR: invalid features type: " << features << std::endl;
         return 1;
@@ -104,7 +113,7 @@ int main() {
                 step++;
             }
         } else {
-            std::cout << "UNABLE TO KEEP TRACKING" << std::endl;
+            std::cout << std::endl << "-> TRACKING LOOSE AT MEAS " << state.getLastMeasurement().getId() << std::endl;
             break;
         }
     }
@@ -127,7 +136,7 @@ int main() {
     // -----------------------------------------------------------------------------
     // SAVE RESULTS
     // -----------------------------------------------------------------------------
-    SLucAM::save_TUM_results(dataset_folder, state);
+    SLucAM::save_TUM_results(dataset_folder, features, state);
 
 
 

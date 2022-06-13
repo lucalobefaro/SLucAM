@@ -35,16 +35,18 @@ namespace SLucAM {
     
     public:
 
-        State();
+        State(const unsigned int keyframe_density);
 
         State(cv::Mat& K, std::vector<Measurement>& measurements, \
             const unsigned int expected_poses, \
-            const unsigned int expected_landmarks);
+            const unsigned int expected_landmarks, \
+            const unsigned int keyframe_density);
         
         State(cv::Mat& K, cv::Mat& distorsion_coefficients, \
             std::vector<Measurement>& measurements, \
             const unsigned int expected_poses, \
-            const unsigned int expected_landmarks);
+            const unsigned int expected_landmarks, \
+            const unsigned int keyframe_density);
         
         bool initializeState(Matcher& matcher, \
                             const bool verbose=false);
@@ -80,6 +82,12 @@ namespace SLucAM {
             this->_from_last_keyframe++;
             return this->_measurements[this->_next_measurement_idx++];
         };
+
+        Measurement& getFirstMeasurement() {
+            Measurement& first_meas = this->_measurements[this->_first_meas_for_initialization++];
+            this->_next_measurement_idx = this->_first_meas_for_initialization;
+            return first_meas;
+        }
         
         const Measurement& getLastMeasurement() const {
             if(this->_next_measurement_idx > 0)
@@ -187,9 +195,14 @@ namespace SLucAM {
         // Reference to the next measurement to analyze
         unsigned int _next_measurement_idx;
 
+        // The reference to the first measurement for initialization
+        unsigned int _first_meas_for_initialization;
+
         // Count how many measurements we integrate from the last keyframe
         unsigned int _from_last_keyframe;
 
+        // How many frames we should wait before to spawn a new keyframe
+        unsigned int _keyframe_density;
     };
 
 } // namespace SLucAM

@@ -205,14 +205,14 @@ namespace SLucAM {
         }
         
         // Check if we have enough inliers
-        if(best_score < 0.6*matches_filter.size()) {
+        if(best_score < 0.8*matches_filter.size() || best_score < 100) {
             if(verbose) 
                 std::cout << "-> NOT ENOUGH INLIERS (" << best_score << ")" << std::endl;
             return false;
         }
 
         // Check if we have a clear winner
-        if(second_best_score > 0.8*best_score) {
+        if(second_best_score > 0.7*best_score) {
             if(verbose) 
                 std::cout << "-> NOT A CLEAR WINNER (" << \
                         second_best_score << "/" << best_score << ")" << std::endl;

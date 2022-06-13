@@ -7,6 +7,7 @@
 // INCLUDES
 // -----------------------------------------------------------------------------
 #include <SLucAM_matcher.h>
+#include <limits>
 
 // TODO: delete this
 #include <iostream>
@@ -25,10 +26,25 @@ namespace SLucAM {
     * NORM_HAMMING distance for matching, otherwise we use NORM_L2.
     */
     Matcher::Matcher(const std::string& feat_types) {
-        if(feat_types == "orb")
+        if(feat_types == "orb") {
             this->_bf_matcher = cv::BFMatcher::create(cv::NORM_HAMMING, true);
-        else
+            Matcher::_l2norm_dist = false;
+            Matcher::_match_th_high = 30;
+            Matcher::_match_th_low = 10;
+            Matcher::_match_th_max = 50;
+        } else {
             this->_bf_matcher = cv::BFMatcher::create(cv::NORM_L2, true);
+            Matcher::_l2norm_dist = true;
+            if(feat_types == "lf_net") {
+                Matcher::_match_th_high = 0.5;
+                Matcher::_match_th_low = 0.1;
+                Matcher::_match_th_max = 0.8;
+            } else {
+                Matcher::_match_th_high = 0.7;
+                Matcher::_match_th_low = 0.2;
+                Matcher::_match_th_max = 1.0;
+            }
+        }
     }
 
 
@@ -42,17 +58,25 @@ namespace SLucAM {
    void Matcher::match_measurements(const Measurement& meas1, \
                                 const Measurement& meas2,  
                                 std::vector<cv::DMatch>& matches, \
-                                const float& match_threshold) {
+                                const bool& match_th_high) {
     
         std::vector<cv::DMatch> unfiltered_matches;
         this->_bf_matcher->match(meas1.getDescriptors(), \
                                 meas2.getDescriptors(), \
                                 unfiltered_matches);
 
+        // Adjust the threshold if we use L2 NORM
+        float th;
+        if(match_th_high)
+            th = Matcher::_match_th_high;
+        else
+            th = Matcher::_match_th_low;
+
         // Filter matches
         matches.reserve(unfiltered_matches.size());
         for(auto& m : unfiltered_matches) {
-            if(m.distance <= match_threshold) 
+            //std::cout << "DIST: " << m.distance << std::endl;
+            if(m.distance <= th) 
                 matches.emplace_back(m);
         }
         matches.shrink_to_fit();
@@ -68,23 +92,31 @@ namespace SLucAM {
     * between them using the bit set count operation from:
     * http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
     */
-    int Matcher::compute_descriptors_distance(const cv::Mat& d1, \
+    float Matcher::compute_descriptors_distance(const cv::Mat& d1, \
                                                 const cv::Mat& d2) {
     
-        const int *d1_ptr = d1.ptr<int32_t>();
-        const int *d2_ptr = d2.ptr<int32_t>();
+        float distance;
 
-        int distance = 0;
+        if(Matcher::_l2norm_dist) {
+            distance = (float)cv::norm(d1, d2, cv::NORM_L2);
+        } else {
 
-        for(int i=0; i<8; i++, d1_ptr++, d2_ptr++)
-        {
-            unsigned  int v = *d1_ptr ^ *d2_ptr;
-            v = v - ((v >> 1) & 0x55555555);
-            v = (v & 0x33333333) + ((v >> 2) & 0x33333333);
-            distance += (((v + (v >> 4)) & 0xF0F0F0F) * 0x1010101) >> 24;
+            const int *d1_ptr = d1.ptr<int32_t>();
+            const int *d2_ptr = d2.ptr<int32_t>();
+
+            distance = 0;
+
+            for(int i=0; i<8; i++, d1_ptr++, d2_ptr++)
+            {
+                unsigned  int v = *d1_ptr ^ *d2_ptr;
+                v = v - ((v >> 1) & 0x55555555);
+                v = (v & 0x33333333) + ((v >> 2) & 0x33333333);
+                distance += (((v + (v >> 4)) & 0xF0F0F0F) * 0x1010101) >> 24;
+            }
+
         }
 
-        return distance;
+        return (float)distance;
 
     }
 
@@ -94,12 +126,12 @@ namespace SLucAM {
     * This function computes the distance between a single descriptor and a set of
     * descriptors and returns the nearest distance computed.
     */
-    int Matcher::compute_descriptors_distance(const cv::Mat& d1, \
+    float Matcher::compute_descriptors_distance(const cv::Mat& d1, \
                                                 const std::vector<cv::Mat>& d2_set) {
     
         // Initialization
-        unsigned int best_distance = 10000;
-        unsigned int current_distance;
+        float best_distance = std::numeric_limits<float>::max();
+        float current_distance;
         const unsigned int n_descriptors = d2_set.size();
 
         // Search for the best distance
