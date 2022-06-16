@@ -37,13 +37,11 @@ namespace SLucAM {
             Matcher::_l2norm_dist = true;
             if(feat_types == "lf_net") {
                 Matcher::_match_th_high = 0.5;
-                Matcher::_match_th_low = 0.1;
-                Matcher::_match_th_max = 0.8;
             } else {
                 Matcher::_match_th_high = 0.7;
-                Matcher::_match_th_low = 0.2;
-                Matcher::_match_th_max = 1.0;
             }
+            Matcher::_match_th_low = 0.2;
+            Matcher::_match_th_max = 1.0;
         }
     }
 

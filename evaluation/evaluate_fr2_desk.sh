@@ -15,7 +15,7 @@ python2 evaluate_rpe.py ../data/datasets/fr2_desk/groundtruth.txt ../data/datase
 echo
 
 echo ATE LF-NET:
-python2 evaluate_ate.py ../data/datasets/fr2_desk/groundtruth.txt ../data/datasets/fr2_desk/SLucAM_results_lf_net.txt --scale 20 --plot fr2_desk/fr2_desk_lf_net_ate_plot.png
+python2 evaluate_ate.py ../data/datasets/fr2_desk/groundtruth.txt ../data/datasets/fr2_desk/SLucAM_results_lf_net.txt --scale 0.7 --plot fr2_desk/fr2_desk_lf_net_ate_plot.png
 
 echo RPE LF-NET:
-python2 evaluate_rpe.py ../data/datasets/fr2_desk/groundtruth.txt ../data/datasets/fr2_desk/SLucAM_results_lf_net.txt --fixed_delta --scale 0.85 --verbose --plot fr2_desk/fr2_desk_lf_net_rpe_plot.png
+python2 evaluate_rpe.py ../data/datasets/fr2_desk/groundtruth.txt ../data/datasets/fr2_desk/SLucAM_results_lf_net.txt --fixed_delta --scale 0.7 --verbose --plot fr2_desk/fr2_desk_lf_net_rpe_plot.png

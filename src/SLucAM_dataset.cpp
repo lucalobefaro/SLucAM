@@ -308,14 +308,8 @@ namespace SLucAM {
                 ++r;
             }
 
-            // Undistort keypoints
-            std::vector<cv::KeyPoint> undistorted_points;
-            undistort_keypoints(points, undistorted_points, \
-                                distorsion_coefficients, K);
-
             // Create new measurement
-            measurements.emplace_back(Measurement(undistorted_points, \
-                                        descriptors));
+            measurements.emplace_back(Measurement(points, descriptors));
 
             // Memorize the name of the image
             measurements.back().setImgName(current_img_filename);

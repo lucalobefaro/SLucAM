@@ -18,18 +18,32 @@ using namespace std;
 
 
 
-int main() {
+int main(int argc, char *argv[]) {
 
-    //std::string features = "orb";
-    //std::string features = "superpoint";
-    std::string features = "lf_net";
+    // -----------------------------------------------------------------------------
+    // Parse arguments
+    // -----------------------------------------------------------------------------
+    if(argc != 3) {
+        std::cout << "ERROR!" << std::endl << "USAGE: SLucAM path_to_dataset features_type" << std::endl;
+        return 1;
+    }
+    std::string dataset_name = argv[1];
+    std::string features = argv[2];
+    if(features != "orb" && features != "superpoint" && features != "lf_net") {
+        std::cout << "The only available features are: orb, superpoint, lf_net" << std::endl;
+            return 1;
+    }
+
+    // --- LIST OF AVAILABLE DATASETS ---
     //std::string dataset_name = "fr1_xyz";
     //std::string dataset_name = "fr2_xyz";
-    std::string dataset_name = "fr2_desk";
+    //std::string dataset_name = "fr2_desk";
     //std::string dataset_name = "fr1_desk";
     //std::string dataset_name = "fr3_structure_texture_far";
     //std::string dataset_name = "fr3_structure_texture_near";
     //std::string dataset_name = "fr3_nostructure_texture_near";
+
+
 
     // -----------------------------------------------------------------------------
     // Create Environment and set variables
@@ -68,7 +82,7 @@ int main() {
         return 1;
     }
     if(!loaded) {
-        cout << "ERROR: unable to load the specified dataset" << endl;
+        cout << "ERROR: unable to load the specified dataset, check that it exists in the data/datasets/ folder" << endl;
         return 1;
     }
     cout << "--- DONE! ---" << endl << endl;
